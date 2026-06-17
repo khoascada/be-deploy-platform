@@ -16,6 +16,14 @@ enum RunnerType {
   SSH
 }
 
+enum GithubConnectionStatus {
+  /// Đang connect bình thường
+  CONNECTED
+  /// Token bị user revoke từ GitHub hoặc không còn dùng được
+  REVOKED
+  /// Có lỗi khi gọi GitHub API, nhưng chưa chắc bị revoke
+  ERROR
+}
 enum ProjectStatus {
   ACTIVE
   PAUSED
@@ -60,54 +68,47 @@ model User {
   name      String?
   avatarUrl String?
 
-  // Nếu dùng email/password login
   passwordHash String?
 
   role UserRole @default(USER)
 
-  // MVP có thể dùng flag này cho FE check nhanh.
-  // Về sau cũng có thể derive từ GithubConnection.
-  isGithubConnected Boolean @default(false)
-
   githubConnection GithubConnection?
   projects         Project[]
-  refreshTokens    RefreshToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model RefreshToken {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  tokenHash String @unique
-
-  expiresAt DateTime
-  revokedAt DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
 
 model GithubConnection {
   id     String @id @default(cuid())
   userId String @unique
+
+  // Quan hệ 1-1 với User
+  // Nếu user bị xóa thì GitHub connection cũng bị xóa
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ID thật của GitHub user
+  // Lấy từ GitHub API: githubUser.id
+  // Dùng để định danh account GitHub, ổn định hơn username
 
   githubUserId String @unique
   username     String
   displayName  String?
-  avatarUrl    String?
+  avatarUrl    String? 
 
   // Không lưu access token plain text.
   // BE nên encrypt trước khi lưu.
   accessTokenEncrypted String
 
+  // Scope mà user đã cấp cho OAuth app
   // Ví dụ: "repo,user:email"
   scopes String?
+
+  status GithubConnectionStatus @default(CONNECTED)
+
+  // Nếu token bị revoke hoặc lỗi OAuth nghiêm trọng thì lưu thời điểm này
+  revokedAt DateTime?
 
   connectedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -120,6 +121,8 @@ model Project {
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   name String
+
+  // Slug dùng cho URL nội bộ
   slug String
 
   // Repo info lấy từ GitHub API, không nên cho user tự gõ fullName.
@@ -132,18 +135,29 @@ model Project {
 
   defaultBranch String @default("main")
 
-  // Cho monorepo hoặc repo có app nằm trong folder con
+  // Thư mục gốc của app trong repo
+  // Với repo bình thường thì là "."
+  // Với monorepo có thể là "apps/web"
   rootDirectory String @default(".")
 
-  // Docker config cơ bản
+  // Đường dẫn Dockerfile trong repo
+  // Mặc định là "Dockerfile"
+  // Nếu app nằm trong folder con có thể là "apps/web/Dockerfile"
   dockerfilePath String @default("Dockerfile")
+
+  // Build context cho docker build
+  // Thường là "."
+  // Ví dụ command: docker build -f Dockerfile .
   buildContext   String @default(".")
 
-  // Phase 0.5 dùng LOCAL
-  // Phase 1 đổi sang SSH mà deploy flow không cần viết lại nhiều
+  // Cách platform chạy command deploy
+  // Phase 0.5 dùng LOCAL: chạy trực tiếp trên VPS hiện tại
+  // Phase 1 dùng SSH: chạy command qua VPS khác
   runnerType RunnerType @default(LOCAL)
 
-  // Phase 0.5: path repo clone/pull trên chính VPS đang chạy platform
+  // Đường dẫn repo được clone trên VPS
+  // Phase 0.5 dùng field này
+  // Ví dụ: "/var/mini-deploy/apps/wordy"
   localRepoPath String?
 
   // Phase 1 dùng sau
@@ -153,7 +167,9 @@ model Project {
   sshKeyEncrypted String?
 
   // Runtime config
+  // Port mà app chạy bên trong container
   containerPort Int  @default(3000)
+  // Port public trên VPS
   hostPort      Int?
 
   containerName String? @unique

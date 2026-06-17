@@ -9,17 +9,8 @@ erDiagram
 		String avatarUrl "nullable"
 		String passwordHash "nullable"
 		UserRole role
-		Boolean isGithubConnected
 		DateTime createdAt
 		DateTime updatedAt
-	}
-	RefreshToken {
-		String id PK
-		String userId FK
-		String tokenHash
-		DateTime expiresAt
-		DateTime revokedAt "nullable"
-		DateTime createdAt
 	}
 	GithubConnection {
 		String id PK
@@ -128,5 +119,4 @@ erDiagram
 	Project ||--}o EnvVar : envVars
 	User ||--|o GithubConnection : githubConnection
 	User ||--}o Project : projects
-	User ||--}o RefreshToken : refreshTokens
 ```
