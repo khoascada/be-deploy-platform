@@ -1,0 +1,132 @@
+# Prisma ERD
+
+```mermaid
+erDiagram
+	User {
+		String id PK
+		String email
+		String name "nullable"
+		String avatarUrl "nullable"
+		String passwordHash "nullable"
+		UserRole role
+		Boolean isGithubConnected
+		DateTime createdAt
+		DateTime updatedAt
+	}
+	RefreshToken {
+		String id PK
+		String userId FK
+		String tokenHash
+		DateTime expiresAt
+		DateTime revokedAt "nullable"
+		DateTime createdAt
+	}
+	GithubConnection {
+		String id PK
+		String userId FK
+		String githubUserId
+		String username
+		String displayName "nullable"
+		String avatarUrl "nullable"
+		String accessTokenEncrypted
+		String scopes "nullable"
+		DateTime connectedAt
+		DateTime updatedAt
+	}
+	Project {
+		String id PK
+		String ownerId FK
+		String name
+		String slug
+		String repoFullName
+		String repoOwner
+		String repoName
+		String repoUrl
+		String githubRepoId "nullable"
+		String defaultBranch
+		String rootDirectory
+		String dockerfilePath
+		String buildContext
+		RunnerType runnerType
+		String localRepoPath "nullable"
+		String sshHost "nullable"
+		Int sshPort "nullable"
+		String sshUser "nullable"
+		String sshKeyEncrypted "nullable"
+		Int containerPort
+		Int hostPort "nullable"
+		String containerName "nullable"
+		String imageName "nullable"
+		Boolean autoDeploy
+		String webhookId "nullable"
+		String webhookSecretEncrypted "nullable"
+		ProjectStatus status
+		String lastDeploymentId FK "nullable"
+		DateTime createdAt
+		DateTime updatedAt
+	}
+	Deployment {
+		String id PK
+		String projectId FK
+		Int deploymentNumber
+		DeploymentTrigger trigger
+		DeploymentStatus status
+		String branch
+		String commitSha "nullable"
+		String commitMessage "nullable"
+		String commitAuthorName "nullable"
+		String commitAuthorEmail "nullable"
+		String githubDeliveryId "nullable"
+		String imageTag "nullable"
+		String containerId "nullable"
+		String errorMessage "nullable"
+		DateTime queuedAt
+		DateTime startedAt "nullable"
+		DateTime finishedAt "nullable"
+		Int durationMs "nullable"
+		DateTime createdAt
+		DateTime updatedAt
+	}
+	DeploymentLog {
+		String id PK
+		String deploymentId FK
+		String projectId FK
+		Int seq
+		LogLevel level
+		LogStream stream
+		String message
+		DateTime createdAt
+	}
+	EnvVar {
+		String id PK
+		String projectId FK
+		String key
+		String valueEncrypted
+		EnvScope scope
+		Boolean isEnabled
+		DateTime createdAt
+		DateTime updatedAt
+	}
+	WebhookEvent {
+		String id PK
+		String projectId FK "nullable"
+		String githubDeliveryId
+		String eventName
+		String action "nullable"
+		String signature "nullable"
+		Boolean isVerified
+		Json payload
+		DateTime receivedAt
+		DateTime processedAt "nullable"
+		String errorMessage "nullable"
+	}
+	Deployment ||--}o DeploymentLog : logs
+	Project |o--|o Deployment : ProjectLastDeployment
+	Project |o--}o WebhookEvent : webhookEvents
+	Project ||--}o Deployment : ProjectDeployments
+	Project ||--}o DeploymentLog : logs
+	Project ||--}o EnvVar : envVars
+	User ||--|o GithubConnection : githubConnection
+	User ||--}o Project : projects
+	User ||--}o RefreshToken : refreshTokens
+```

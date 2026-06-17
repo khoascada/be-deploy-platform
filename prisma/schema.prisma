@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum RunnerType {
+  LOCAL
+  SSH
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum DeploymentStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELED
+}
+
+enum DeploymentTrigger {
+  MANUAL
+  GITHUB_PUSH
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum LogStream {
+  SYSTEM
+  STDOUT
+  STDERR
+}
+
+enum EnvScope {
+  BUILD
+  RUNTIME
+  BOTH
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+
+  // Nếu dùng email/password login
+  passwordHash String?
+
+  role UserRole @default(USER)
+
+  // MVP có thể dùng flag này cho FE check nhanh.
+  // Về sau cũng có thể derive từ GithubConnection.
+  isGithubConnected Boolean @default(false)
+
+  githubConnection GithubConnection?
+  projects         Project[]
+  refreshTokens    RefreshToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RefreshToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String @unique
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model GithubConnection {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  githubUserId String @unique
+  username     String
+  displayName  String?
+  avatarUrl    String?
+
+  // Không lưu access token plain text.
+  // BE nên encrypt trước khi lưu.
+  accessTokenEncrypted String
+
+  // Ví dụ: "repo,user:email"
+  scopes String?
+
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name String
+  slug String
+
+  // Repo info lấy từ GitHub API, không nên cho user tự gõ fullName.
+  // Ví dụ: "khoascada/wordy"
+  repoFullName String
+  repoOwner    String
+  repoName     String
+  repoUrl      String
+  githubRepoId String?
+
+  defaultBranch String @default("main")
+
+  // Cho monorepo hoặc repo có app nằm trong folder con
+  rootDirectory String @default(".")
+
+  // Docker config cơ bản
+  dockerfilePath String @default("Dockerfile")
+  buildContext   String @default(".")
+
+  // Phase 0.5 dùng LOCAL
+  // Phase 1 đổi sang SSH mà deploy flow không cần viết lại nhiều
+  runnerType RunnerType @default(LOCAL)
+
+  // Phase 0.5: path repo clone/pull trên chính VPS đang chạy platform
+  localRepoPath String?
+
+  // Phase 1 dùng sau
+  sshHost String?
+  sshPort Int?    @default(22)
+  sshUser String?
+  sshKeyEncrypted String?
+
+  // Runtime config
+  containerPort Int  @default(3000)
+  hostPort      Int?
+
+  containerName String? @unique
+  imageName     String?
+
+  autoDeploy Boolean @default(true)
+
+  // GitHub webhook
+  webhookId              String?
+  webhookSecretEncrypted String?
+
+  status ProjectStatus @default(ACTIVE)
+
+  lastDeploymentId String?     @unique
+  lastDeployment   Deployment? @relation("ProjectLastDeployment", fields: [lastDeploymentId], references: [id], onDelete: SetNull)
+
+  deployments   Deployment[]    @relation("ProjectDeployments")
+  logs          DeploymentLog[]
+  envVars       EnvVar[]
+  webhookEvents WebhookEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerId, slug])
+  @@unique([ownerId, repoFullName])
+  @@index([ownerId])
+  @@index([repoFullName])
+}
+
+model Deployment {
+  id String @id @default(cuid())
+
+  projectId String
+  project   Project @relation("ProjectDeployments", fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Số thứ tự deploy trong từng project: 1, 2, 3...
+  deploymentNumber Int
+
+  trigger DeploymentTrigger
+  status  DeploymentStatus @default(QUEUED)
+
+  branch String
+
+  commitSha         String?
+  commitMessage     String?
+  commitAuthorName  String?
+  commitAuthorEmail String?
+
+  // GitHub delivery id để tránh xử lý webhook trùng
+  githubDeliveryId String? @unique
+
+  imageTag    String?
+  containerId String?
+
+  errorMessage String?
+
+  queuedAt   DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  durationMs Int?
+
+  logs DeploymentLog[]
+
+  // Deployment này có thể đang là lastDeployment của Project
+  markedAsLastBy Project? @relation("ProjectLastDeployment")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, deploymentNumber])
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+model DeploymentLog {
+  id String @id @default(cuid())
+
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  // Denormalize projectId để query log theo project nhanh hơn
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // seq giúp FE render log đúng thứ tự
+  seq Int
+
+  level  LogLevel  @default(INFO)
+  stream LogStream @default(SYSTEM)
+
+  message String
+
+  createdAt DateTime @default(now())
+
+  @@unique([deploymentId, seq])
+  @@index([deploymentId])
+  @@index([projectId, createdAt])
+}
+
+model EnvVar {
+  id String @id @default(cuid())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  key String
+
+  // Phase 2 dùng chính thức.
+  // Nhưng để sẵn schema cũng ổn, vì env là core của deploy.
+  valueEncrypted String
+
+  scope EnvScope @default(BOTH)
+
+  isEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, key, scope])
+  @@index([projectId])
+}
+
+model WebhookEvent {
+  id String @id @default(cuid())
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  githubDeliveryId String @unique
+
+  // Ví dụ: "push"
+  eventName String
+
+  // Ví dụ: "opened", "closed", null với push event
+  action String?
+
+  signature  String?
+  isVerified Boolean @default(false)
+
+  // Lưu raw payload để debug webhook
+  payload Json
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  errorMessage String?
+
+  @@index([projectId])
+  @@index([eventName])
+  @@index([receivedAt])
+}
