@@ -1,8 +1,8 @@
 import { RATE_LIMIT } from '@/common/constants';
 import { ConfigModule } from '@/config/config.module';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { CsrfOriginGuard } from '@/common/guards/csrf-origin.guard';
 import { AuthModule } from '@/features/auth/auth.module';
-import { ProductModule } from '@/features/products/product.module';
 import { UserModule } from '@/features/users/user.module';
 import { LoggerModule } from '@/logger/logger.module';
 import { PrismaModule } from '@/prisma/prisma.module';
@@ -19,7 +19,6 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     RedisModule,
     AuthModule,
     UserModule,
-    ProductModule,
     ThrottlerModule.forRoot([
       {
         name: 'global',
@@ -35,6 +34,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: CsrfOriginGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })

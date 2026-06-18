@@ -13,16 +13,13 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Patch,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserService } from './user.service';
 
-@ApiBearerAuth()
 @Controller('users')
 export class UserController {
   constructor(private readonly users: UserService) {}
@@ -32,14 +29,13 @@ export class UserController {
     return this.users.findById(user.id);
   }
 
-  @ApiBearerAuth() // đính kèm AT vào request có decorator này
   @Get()
   findAll(@Query() pagination: PaginationDto) {
     return this.users.findAll(pagination);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.users.findById(id);
   }
 
@@ -52,7 +48,7 @@ export class UserController {
   @Roles('ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(@Param('id') id: string) {
     await this.users.remove(id);
   }
 }

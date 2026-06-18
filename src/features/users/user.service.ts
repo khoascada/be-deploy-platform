@@ -26,19 +26,22 @@ export class UserService {
     };
   }
 
-  async findById(id: number) {
+  async findById(id: string) {
     const user = await this.users.findById(id);
     if (!user) throw new NotFoundError(`User not found`);
-    return toUserDetailDto(user);
+    return toUserDetailDto({
+      ...user,
+      isGithubConnected: Boolean(user.githubConnection),
+    });
   }
 
-  async update(id: number, dto: UpdateUserDto) {
+  async update(id: string, dto: UpdateUserDto) {
     await this.findById(id);
     const updated = await this.users.update(id, dto);
     return toUserDetailDto(updated);
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     await this.findById(id);
     await this.users.delete(id);
   }

@@ -4,9 +4,9 @@ import { z } from 'zod';
 export const registerSchema = z.object({
   email: z.email(),
   password: z.string().min(AUTH.PASSWORD_MIN_LENGTH),
-  name: z.string().min(AUTH.NAME_MIN_LENGTH).optional(),
-  age: z.number().min(10).optional(),
-  address: z.string().optional(),
+  name: z.string().min(AUTH.NAME_MIN_LENGTH),
+  theme: z.enum(['LIGHT', 'DARK']),
+  language: z.enum(['VI', 'EN']),
 });
 
 export const loginSchema = z.object({
@@ -15,11 +15,9 @@ export const loginSchema = z.object({
 });
 
 export const refreshTokenSchema = z.object({
-  refreshToken: z.string(),
 });
 
 export const logoutSchema = z.object({
-  refreshToken: z.string(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

@@ -15,7 +15,6 @@ async function bootstrap() {
     .setTitle('My API forever')
     .setDescription('My description')
     .setVersion('1.0')
-    .addBearerAuth()
     .build();
 
   // Bảo mật HTTP headers

@@ -2,24 +2,22 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { User } from '@prisma/client';
 
 export class UserDto {
-  @ApiProperty({ example: 1 }) id!: number;
+  @ApiProperty({ example: 'clx123abc456def789ghi012' }) id!: string;
   @ApiProperty({ example: 'user@example.com' }) email!: string;
   @ApiProperty({ example: 'John', nullable: true }) name!: string | null;
   @ApiProperty({ example: 'USER', enum: ['USER', 'ADMIN'] }) role!: string;
-  @ApiProperty({ example: '32 Dinh Tien Hoang', nullable: true }) address!:
-    | string
-    | null;
+  @ApiProperty({ example: null, nullable: true }) avatarUrl!: string | null;
 }
 
 export class UserDetailDto {
-  @ApiProperty({ example: 1 }) id!: number;
+  @ApiProperty({ example: 'clx123abc456def789ghi012' }) id!: string;
   @ApiProperty({ example: 'user@example.com' }) email!: string;
   @ApiProperty({ example: 'John', nullable: true }) name!: string | null;
   @ApiProperty({ example: 'USER', enum: ['USER', 'ADMIN'] }) role!: string;
-  @ApiProperty({ example: '32 Dinh Tien Hoang', nullable: true }) address!:
-    | string
-    | null;
-  @ApiProperty({ example: true }) emailVerified!: boolean;
+  @ApiProperty({ example: null, nullable: true }) avatarUrl!: string | null;
+  @ApiProperty({ example: true }) isGithubConnected!: boolean;
+  @ApiProperty() createdAt!: Date;
+  @ApiProperty() updatedAt!: Date;
 }
 
 export function toUserDto(user: User): UserDto {
@@ -28,17 +26,21 @@ export function toUserDto(user: User): UserDto {
     email: user.email,
     name: user.name,
     role: user.role,
-    address: user.address,
+    avatarUrl: user.avatarUrl,
   };
 }
 
-export function toUserDetailDto(user: User): UserDetailDto {
+export function toUserDetailDto(
+  user: User & { isGithubConnected?: boolean },
+): UserDetailDto {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role,
-    address: user.address,
-    emailVerified: user.emailVerified,
+    avatarUrl: user.avatarUrl,
+    isGithubConnected: user.isGithubConnected ?? false,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
   };
 }

@@ -7,16 +7,22 @@ import { UsersRepository } from '@/features/users/user.repository';
 import { RedisService } from '@/redis/redis.service';
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import type { User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { RegisterInput, type LoginInput } from './schemas/auth.schema';
 import {
-  LoginResponseDto,
   RegisterResponseDto,
-  TokensDto,
+  AuthUserDto,
   toAuthUserDto,
   toRegisterResponseDto,
 } from './dto/auth-response.dto';
+
+interface AuthSessionResult {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUserDto;
+}
 
 @Injectable()
 class AuthService {
@@ -27,7 +33,7 @@ class AuthService {
   ) {}
 
   private signAccessToken(payload: {
-    id: number;
+    id: string;
     email: string;
     role: string;
   }) {
@@ -39,7 +45,7 @@ class AuthService {
     return { token, jti };
   }
 
-  private signRefreshToken(payload: { id: number }) {
+  private signRefreshToken(payload: { id: string }) {
     const jti = randomUUID();
     const token = this.jwt.sign(
       { ...payload, jti },
@@ -48,33 +54,7 @@ class AuthService {
     return { token, jti };
   }
 
-  async register(data: RegisterInput): Promise<RegisterResponseDto> {
-    const { email, password, name, age, address } = data;
-    const exists = await this.users.findByEmail(email);
-
-    if (exists) throw new ConflictError('Email already exists');
-
-    const hashedPassword = await bcrypt.hash(password, BCRYPT.SALT_ROUNDS);
-
-    const user = await this.users.create({
-      email,
-      password: hashedPassword,
-      name,
-      age,
-      address,
-    });
-
-    return toRegisterResponseDto(user);
-  }
-
-  async login(data: LoginInput): Promise<LoginResponseDto> {
-    const user = await this.users.findByEmail(data.email);
-
-    if (!user || !user.password) throw new UnauthorizedError('None user');
-
-    const isMatch = await bcrypt.compare(data.password, user.password);
-    if (!isMatch) throw new UnauthorizedError('Not match password');
-
+  private async createSession(user: User): Promise<AuthSessionResult> {
     const { token: accessToken } = this.signAccessToken({
       id: user.id,
       email: user.email,
@@ -93,7 +73,45 @@ class AuthService {
     return { accessToken, refreshToken, user: toAuthUserDto(user) };
   }
 
-  async logout(userId: number, atJti: string, atTtlSec: number, refreshToken: string) {
+  async register(data: RegisterInput): Promise<
+    RegisterResponseDto & Pick<AuthSessionResult, 'accessToken' | 'refreshToken'>
+  > {
+    const { email, password, name, language, theme } = data;
+    const exists = await this.users.findByEmail(email);
+
+    if (exists) throw new ConflictError('Email already exists');
+
+    const hashedPassword = await bcrypt.hash(password, BCRYPT.SALT_ROUNDS);
+
+    const user = await this.users.create({
+      email,
+      passwordHash: hashedPassword,
+      name,
+      language,
+      theme
+    });
+
+    const session = await this.createSession(user);
+    return { ...toRegisterResponseDto(user), ...session };
+  }
+
+  async login(data: LoginInput): Promise<AuthSessionResult> {
+    const user = await this.users.findByEmail(data.email);
+
+    if (!user || !user.passwordHash) throw new UnauthorizedError('None user');
+
+    const isMatch = await bcrypt.compare(data.password, user.passwordHash);
+    if (!isMatch) throw new UnauthorizedError('Not match password');
+
+    return this.createSession(user);
+  }
+
+  async logout(
+    userId: string,
+    atJti: string,
+    atTtlSec: number,
+    refreshToken: string,
+  ) {
     // Decode RT lấy jti để xóa khỏi Redis (không cần verify vì chỉ cần jti)
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const raw = this.jwt.decode(refreshToken);
@@ -109,10 +127,13 @@ class AuthService {
     }
   }
 
-  async refresh(refreshToken: string): Promise<TokensDto> {
-    let payload: { id: number; jti: string };
+  async refresh(refreshToken: string): Promise<Pick<AuthSessionResult, 'accessToken' | 'refreshToken'>> {
+    let payload: { id: string; jti: string };
     try {
-      payload = this.jwt.verify(refreshToken) as unknown as { id: number; jti: string };
+      payload = this.jwt.verify(refreshToken) as unknown as {
+        id: string;
+        jti: string;
+      };
     } catch {
       throw new UnauthorizedError('Invalid refresh token');
     }
@@ -126,16 +147,10 @@ class AuthService {
     // Rotation: xóa RT cũ trước khi cấp RT mới
     await this.redis.del(REDIS_KEY.refreshToken(payload.id, payload.jti));
 
-    const { token: newAccessToken } = this.signAccessToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
-    const { token: newRefreshToken, jti: newJti } = this.signRefreshToken({ id: user.id });
+    const { accessToken, refreshToken: newRefreshToken } =
+      await this.createSession(user);
 
-    await this.redis.setex(REDIS_KEY.refreshToken(user.id, newJti), TOKEN_TTL.REFRESH, '1');
-
-    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+    return { accessToken, refreshToken: newRefreshToken };
   }
 }
 

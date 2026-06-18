@@ -3,10 +3,22 @@ import {
   CurrentUser,
 } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
+import { COOKIE } from '@/common/constants';
+import { UnauthorizedError } from '@/common/exceptions/app.exceptions';
+import { getCookieValue, setAuthCookies, clearAuthCookies } from '@/common/utils/cookie.util';
+import type { EnvVars } from '@/config/env.validation';
 import { ApiSuccess } from '@/common/swagger/api-success-response';
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import {
-  ApiBearerAuth,
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
   ApiCreatedResponse,
   ApiExtraModels,
   ApiNoContentResponse,
@@ -17,18 +29,24 @@ import {
 import AuthService from './auth.service';
 import {
   LoginResponseDto,
+  RefreshResponseDto,
   RegisterResponseDto,
-  TokensDto,
 } from './dto/auth-response.dto';
 import { LoginDto } from './dto/login.dto';
-import { LogoutDto } from './dto/logout.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import type { Request, Response } from 'express';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService<EnvVars, true>,
+  ) {}
+
+  private isSecureCookie() {
+    return this.config.get('NODE_ENV', { infer: true }) === 'production';
+  }
 
   @ApiOperation({ summary: 'Register new user' })
   @ApiCreatedResponse({
@@ -43,8 +61,13 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.CREATED)
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.register(dto);
+    setAuthCookies(res, result, this.isSecureCookie());
+    return { user: result.user };
   }
 
   @ApiOperation({ summary: 'Login' })
@@ -52,26 +75,47 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.login(dto);
+    setAuthCookies(res, result, this.isSecureCookie());
+    return { user: result.user };
   }
 
   @ApiOperation({ summary: 'Refresh access token' })
-  @ApiSuccess(TokensDto)
+  @ApiSuccess(RefreshResponseDto)
   @Public()
   @HttpCode(HttpStatus.OK)
   @Post('refresh-token')
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.auth.refresh(dto.refreshToken);
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = getCookieValue(req, COOKIE.REFRESH_TOKEN);
+    if (!refreshToken) {
+      throw new UnauthorizedError('Refresh token cookie is missing');
+    }
+
+    const tokens = await this.auth.refresh(refreshToken);
+    setAuthCookies(res, tokens, this.isSecureCookie());
+    return { message: 'Token refreshed successfully' };
   }
 
   @ApiOperation({ summary: 'Logout' })
-  @ApiBearerAuth('access-token')
   @ApiNoContentResponse({ description: 'Logged out successfully' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('logout')
-  logout(@CurrentUser() user: AuthUser, @Body() dto: LogoutDto) {
+  async logout(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const atTtlSec = Math.max(0, user.exp - Math.floor(Date.now() / 1000));
-    return this.auth.logout(user.id, user.jti, atTtlSec, dto.refreshToken);
+    const refreshToken = getCookieValue(req, COOKIE.REFRESH_TOKEN) ?? '';
+
+    await this.auth.logout(user.id, user.jti, atTtlSec, refreshToken);
+    clearAuthCookies(res, this.isSecureCookie());
   }
 }
