@@ -31,6 +31,55 @@
 $ npm install
 ```
 
+## Local database with Docker
+
+1. Create `.env.development` from `.env.example`
+2. Start PostgreSQL:
+
+```bash
+$ npm run db:up
+```
+
+3. Apply Prisma migrations:
+
+```bash
+$ npm run prisma:migrate
+```
+
+4. Optional helpers:
+
+```bash
+$ npm run db:ps
+$ npm run db:logs
+$ npm run db:down
+```
+
+## Environment files
+
+The app and Prisma load environment files in this order:
+
+1. `.env.development` or `.env.production` depending on `NODE_ENV`
+2. `.env` as a fallback
+
+Recommended setup:
+
+- local dev: `.env.development`
+- production: `.env.production`
+- optional shared fallback: `.env`
+
+Useful scripts:
+
+```bash
+$ npm run build:dev
+$ npm run build:prod
+$ npm run start:dev:env
+$ npm run start:prod:env
+$ npm run prisma:generate:dev
+$ npm run prisma:generate:prod
+$ npm run prisma:migrate:dev
+$ npm run prisma:migrate:prod
+```
+
 ## Compile and run the project
 
 ```bash

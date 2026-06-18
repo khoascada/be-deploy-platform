@@ -1,5 +1,10 @@
-import 'dotenv/config';
+import { config as loadEnv } from 'dotenv';
 import { defineConfig } from 'prisma/config';
+
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+
+loadEnv({ path: `.env.${nodeEnv}` });
+loadEnv({ path: '.env', override: false });
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
