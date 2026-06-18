@@ -11,6 +11,16 @@ enum UserRole {
   ADMIN
 }
 
+enum Theme {
+  LIGHT
+  DARK
+}
+
+enum Language {
+  VI
+  EN
+}
+
 enum RunnerType {
   LOCAL
   SSH
@@ -32,14 +42,18 @@ enum ProjectStatus {
 
 enum DeploymentStatus {
   QUEUED
-  RUNNING
+  PULLING
+  BUILDING
+  DEPLOYING
   SUCCESS
   FAILED
   CANCELED
 }
 
 enum DeploymentTrigger {
+  // MANUAL: user bấm deploy trên dashboard
   MANUAL
+  // GITHUB_PUSH: GitHub webhook gọi về sau khi push code
   GITHUB_PUSH
 }
 
@@ -51,15 +65,15 @@ enum LogLevel {
 }
 
 enum LogStream {
-  SYSTEM
-  STDOUT
-  STDERR
+  SYSTEM // log do platform tự ghi
+  STDOUT // output bình thường từ command
+  STDERR // output lỗi/cảnh báo từ command
 }
 
 enum EnvScope {
-  BUILD
-  RUNTIME
-  BOTH
+  BUILD // dùng khi docker build
+  RUNTIME // dùng khi docker run
+  BOTH // dùng cả 2
 }
 
 model User {
@@ -67,6 +81,8 @@ model User {
   email     String   @unique
   name      String?
   avatarUrl String?
+  theme Theme @default(LIGHT)
+  language Language @default(EN)
 
   passwordHash String?
 
@@ -133,7 +149,8 @@ model Project {
   repoUrl      String
   githubRepoId String?
 
-  defaultBranch String @default("main")
+  githubDefaultBranch String 
+  deployBranch String 
 
   // Thư mục gốc của app trong repo
   // Với repo bình thường thì là "."
@@ -170,7 +187,7 @@ model Project {
   // Port mà app chạy bên trong container
   containerPort Int  @default(3000)
   // Port public trên VPS
-  hostPort      Int?
+  hostPort      Int? @unique
 
   containerName String? @unique
   imageName     String?
@@ -183,21 +200,22 @@ model Project {
 
   status ProjectStatus @default(ACTIVE)
 
-  lastDeploymentId String?     @unique
-  lastDeployment   Deployment? @relation("ProjectLastDeployment", fields: [lastDeploymentId], references: [id], onDelete: SetNull)
 
+  // nói vs prisma rằng project có thể chứa nhiều deployment (match vs project ở Deployment)
   deployments   Deployment[]    @relation("ProjectDeployments")
   logs          DeploymentLog[]
   envVars       EnvVar[]
+
+  // Các webhook event nhận được từ GitHub
   webhookEvents WebhookEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([ownerId, slug])
-  @@unique([ownerId, repoFullName])
+  @@unique([ownerId, githubRepoId])
   @@index([ownerId])
-  @@index([repoFullName])
+  @@index([githubRepoId])
 }
 
 model Deployment {
@@ -209,7 +227,10 @@ model Deployment {
   // Số thứ tự deploy trong từng project: 1, 2, 3...
   deploymentNumber Int
 
+  // Deployment này được trigger bằng cách nào
+
   trigger DeploymentTrigger
+  // Trạng thái hiện tại của deployment
   status  DeploymentStatus @default(QUEUED)
 
   branch String
@@ -219,23 +240,37 @@ model Deployment {
   commitAuthorName  String?
   commitAuthorEmail String?
 
-  // GitHub delivery id để tránh xử lý webhook trùng
+  /// ID của request webhook do GitHub gửi
+  /// GitHub gửi header: X-GitHub-Delivery
+  ///
+  /// Dùng để chống xử lý trùng webhook.
+  /// Nếu GitHub retry cùng một webhook, mình có thể check delivery id này đã tồn tại chưa.
   githubDeliveryId String? @unique
 
+  /// Docker image tag được build ở deployment này
+  /// Ví dụ:
+  /// "mini-deploy/wordy-frontend:deploy-12"
+  ///
+  /// Project.imageName chỉ lưu tên image base.
+  /// Deployment.imageTag lưu tag cụ thể của lần deploy này.
   imageTag    String?
+  /// Docker container id sau khi chạy thành công
+  /// Ví dụ: "a8f9c1..."
+  /// Không bắt buộc, nhưng hữu ích để debug
   containerId String?
 
   errorMessage String?
 
+  // Thời điểm deployment được đưa vào queue
   queuedAt   DateTime  @default(now())
+  // Thời điểm worker bắt đầu chạy deployment
   startedAt  DateTime?
+  // Thời điểm deployment kết thúc, dù success hay failed
   finishedAt DateTime?
+  // Tổng thời gian deploy, tính bằng milliseconds
   durationMs Int?
 
   logs DeploymentLog[]
-
-  // Deployment này có thể đang là lastDeployment của Project
-  markedAsLastBy Project? @relation("ProjectLastDeployment")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -256,9 +291,14 @@ model DeploymentLog {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // seq giúp FE render log đúng thứ tự
+  /// Ví dụ:
+  /// seq = 1: Starting deployment...
+  /// seq = 2: Running git fetch...
+  /// seq = 3: Building docker image...
   seq Int
-
+  // Mức độ log
   level  LogLevel  @default(INFO)
+  // Log này đến từ nguồn nào
   stream LogStream @default(SYSTEM)
 
   message String
@@ -266,7 +306,6 @@ model DeploymentLog {
   createdAt DateTime @default(now())
 
   @@unique([deploymentId, seq])
-  @@index([deploymentId])
   @@index([projectId, createdAt])
 }
 
@@ -276,49 +315,136 @@ model EnvVar {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  // Tên biến môi trường : DATABASE_URL,...
   key String
 
   // Phase 2 dùng chính thức.
-  // Nhưng để sẵn schema cũng ổn, vì env là core của deploy.
+  // Giá trị env đã được mã hóa
+  // JSON string chứa toàn bộ encrypted envelope:
+  // {
+  //   "alg": "AES-256-GCM",
+  //   "kid": 1,
+  //   "iv": "...",
+  //   "tag": "...",
+  //   "ciphertext": "..."
+  // }
   valueEncrypted String
 
+  // Env này dùng ở giai đoạn nào
   scope EnvScope @default(BOTH)
 
+  // cho phép tắt mà ko cần xóa khỏi DB
   isEnabled Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Trong một project, không nên có 2 env cùng key và cùng scope
   @@unique([projectId, key, scope])
-  @@index([projectId])
 }
 
 model WebhookEvent {
+  /// Primary key nội bộ của webhook event
   id String @id @default(cuid())
 
+  /// Project liên quan tới webhook này
+  ///
+  /// Có thể null vì một số trường hợp:
+  /// - GitHub gửi event "ping" khi mới tạo webhook
+  /// - BE chưa tìm được project từ repository.id
+  /// - Webhook sai repo / repo đã bị xóa khỏi hệ thống
   projectId String?
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  /// Quan hệ tới Project
+  /// Nếu project bị xóa thì webhook event vẫn có thể được giữ lại,
+  /// nhưng projectId sẽ bị set null
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  /// ID duy nhất của lần GitHub gửi webhook
+  ///
+  /// Lấy từ header:
+  /// X-GitHub-Delivery
+  ///
+  /// Dùng để chống xử lý trùng.
+  /// Nếu GitHub retry cùng một webhook, delivery id vẫn giống nhau.
   githubDeliveryId String @unique
 
-  // Ví dụ: "push"
+  /// Tên event GitHub gửi về
+  ///
+  /// Lấy từ header:
+  /// X-GitHub-Event
+  ///
+  /// Ví dụ:
+  /// "push"
+  /// "ping"
+  /// "pull_request"
+  /// "create"
+  /// "delete"
   eventName String
 
-  // Ví dụ: "opened", "closed", null với push event
+  /// Action cụ thể của event, nếu có
+  ///
+  /// Một số event như pull_request sẽ có action:
+  /// "opened", "closed", "synchronize"
+  ///
+  /// Với push event thường không có action, nên nullable
   action String?
 
-  signature  String?
+  /// Signature GitHub gửi lên
+  ///
+  /// Lấy từ header:
+  /// X-Hub-Signature-256
+  ///
+  /// Ví dụ:
+  /// "sha256=abc123..."
+  ///
+  /// Lưu lại để debug, không dùng thay webhook secret.
+  signature String?
+
+  /// Kết quả verify signature
+  ///
+  /// true: request được xác minh là đúng từ GitHub
+  /// false: signature sai hoặc thiếu
   isVerified Boolean @default(false)
 
-  // Lưu raw payload để debug webhook
+  /// Payload JSON GitHub gửi về
+  ///
+  /// Dùng để debug hoặc inspect lại webhook.
+  /// Ví dụ payload push có:
+  /// - ref
+  /// - repository.id
+  /// - repository.full_name
+  /// - head_commit.id
+  /// - head_commit.message
   payload Json
 
-  receivedAt  DateTime  @default(now())
+  /// Thời điểm BE nhận webhook
+  receivedAt DateTime @default(now())
+
+  /// Thời điểm BE xử lý xong webhook
+  ///
+  /// Có thể null nếu:
+  /// - webhook mới nhận nhưng chưa xử lý xong
+  /// - verify failed
+  /// - bị duplicate nên bỏ qua
   processedAt DateTime?
 
+  /// Lỗi xảy ra khi xử lý webhook
+  ///
+  /// Ví dụ:
+  /// "Invalid signature"
+  /// "Project not found"
+  /// "Branch dev does not match deployBranch main"
+  /// "Duplicate delivery id"
   errorMessage String?
 
+  /// Tối ưu query webhook theo project
   @@index([projectId])
+
+  /// Tối ưu query theo loại event
+  /// Ví dụ xem tất cả event push/ping
   @@index([eventName])
+
+  /// Tối ưu query webhook gần đây
   @@index([receivedAt])
 }

@@ -21,6 +21,8 @@ erDiagram
 		String avatarUrl "nullable"
 		String accessTokenEncrypted
 		String scopes "nullable"
+		GithubConnectionStatus status
+		DateTime revokedAt "nullable"
 		DateTime connectedAt
 		DateTime updatedAt
 	}
@@ -34,7 +36,8 @@ erDiagram
 		String repoName
 		String repoUrl
 		String githubRepoId "nullable"
-		String defaultBranch
+		String githubDefaultBranch
+		String deployBranch
 		String rootDirectory
 		String dockerfilePath
 		String buildContext
@@ -52,7 +55,6 @@ erDiagram
 		String webhookId "nullable"
 		String webhookSecretEncrypted "nullable"
 		ProjectStatus status
-		String lastDeploymentId FK "nullable"
 		DateTime createdAt
 		DateTime updatedAt
 	}
@@ -112,7 +114,6 @@ erDiagram
 		String errorMessage "nullable"
 	}
 	Deployment ||--}o DeploymentLog : logs
-	Project |o--|o Deployment : ProjectLastDeployment
 	Project |o--}o WebhookEvent : webhookEvents
 	Project ||--}o Deployment : ProjectDeployments
 	Project ||--}o DeploymentLog : logs
