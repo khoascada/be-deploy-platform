@@ -2,9 +2,8 @@ import {
   AuthUser,
   CurrentUser,
 } from '@/common/decorators/current-user.decorator';
-import { Roles } from '@/common/decorators/roles.decorator';
+import { AdminOnly } from '@/common/decorators/admin-only.decorator';
 import { PaginationDto } from '@/common/dto/pagination.dto';
-import { RolesGuard } from '@/common/guards/roles.guard';
 import {
   Body,
   Controller,
@@ -15,7 +14,6 @@ import {
   Param,
   Patch,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserService } from './user.service';
@@ -29,14 +27,10 @@ export class UserController {
     return this.users.findById(user.id);
   }
 
+  @AdminOnly()
   @Get()
   findAll(@Query() pagination: PaginationDto) {
     return this.users.findAll(pagination);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.users.findById(id);
   }
 
   @Patch('me')
@@ -44,8 +38,7 @@ export class UserController {
     return this.users.update(user.id, dto);
   }
 
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @AdminOnly()
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(@Param('id') id: string) {
