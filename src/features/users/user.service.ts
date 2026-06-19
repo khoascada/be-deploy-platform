@@ -1,4 +1,5 @@
-import type { PaginationDto } from '@/common/dto/pagination.dto';
+﻿import type { PaginationDto } from '@/common/dto/pagination.dto';
+import { USER_ERROR_CODE } from '@/common/constants';
 import { NotFoundError } from '@/common/exceptions/app.exceptions';
 import { Injectable } from '@nestjs/common';
 import type { UpdateUserDto } from './dto/update-user.dto';
@@ -28,7 +29,9 @@ export class UserService {
 
   async findById(id: string) {
     const user = await this.users.findById(id);
-    if (!user) throw new NotFoundError(`User not found`);
+    if (!user) {
+      throw new NotFoundError('User not found', USER_ERROR_CODE.USER_NOT_FOUND);
+    }
     return toUserDetailDto({
       ...user,
       isGithubConnected: Boolean(user.githubConnection),

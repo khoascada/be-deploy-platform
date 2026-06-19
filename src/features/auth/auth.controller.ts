@@ -1,9 +1,9 @@
-import {
+﻿import {
   AuthUser,
   CurrentUser,
 } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
-import { COOKIE } from '@/common/constants';
+import { AUTH_ERROR_CODE, COOKIE } from '@/common/constants';
 import { UnauthorizedError } from '@/common/exceptions/app.exceptions';
 import { getCookieValue, setAuthCookies, clearAuthCookies } from '@/common/utils/cookie.util';
 import type { EnvVars } from '@/config/env.validation';
@@ -95,7 +95,10 @@ export class AuthController {
   ) {
     const refreshToken = getCookieValue(req, COOKIE.REFRESH_TOKEN);
     if (!refreshToken) {
-      throw new UnauthorizedError('Refresh token cookie is missing');
+      throw new UnauthorizedError(
+        'Refresh token cookie is missing',
+        AUTH_ERROR_CODE.REFRESH_TOKEN_MISSING,
+      );
     }
 
     const tokens = await this.auth.refresh(refreshToken);

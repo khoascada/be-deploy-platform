@@ -1,4 +1,4 @@
-export const TOKEN_TTL = {
+﻿export const TOKEN_TTL = {
   ACCESS: 15 * 60,
   REFRESH: 7 * 24 * 3600,
 } as const;
@@ -39,3 +39,5 @@ export const COOKIE = {
   ACCESS_MAX_AGE: TOKEN_TTL.ACCESS * 1000,
   REFRESH_MAX_AGE: TOKEN_TTL.REFRESH * 1000,
 } as const;
+
+export * from './error-codes';
