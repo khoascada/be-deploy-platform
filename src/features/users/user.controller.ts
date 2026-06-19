@@ -24,7 +24,7 @@ export class UserController {
 
   @Get('me')
   getMe(@CurrentUser() user: AuthUser) {
-    return this.users.findById(user.id);
+    return this.users.findMe(user.id);
   }
 
   @AdminOnly()

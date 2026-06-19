@@ -16,13 +16,13 @@ import { JwtService } from '@nestjs/jwt';
 import type { User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { RegisterInput, type LoginInput } from './schemas/auth.schema';
 import {
-  RegisterResponseDto,
   AuthUserDto,
+  RegisterResponseDto,
   toAuthUserDto,
   toRegisterResponseDto,
 } from './dto/auth-response.dto';
+import { RegisterInput, type LoginInput } from './schemas/auth.schema';
 
 interface AuthSessionResult {
   accessToken: string;
@@ -55,7 +55,7 @@ class AuthService {
     const jti = randomUUID();
     const token = this.jwt.sign(
       { ...payload, jti },
-      { expiresIn: TOKEN_TTL.ACCESS },
+      { expiresIn: TOKEN_TTL.ACCESS }, // jwt sẽ tự sinh ra iat, exp
     );
     return { token, jti };
   }
@@ -88,8 +88,11 @@ class AuthService {
     return { accessToken, refreshToken, user: toAuthUserDto(user) };
   }
 
-  async register(data: RegisterInput): Promise<
-    RegisterResponseDto & Pick<AuthSessionResult, 'accessToken' | 'refreshToken'>
+  async register(
+    data: RegisterInput,
+  ): Promise<
+    RegisterResponseDto &
+      Pick<AuthSessionResult, 'accessToken' | 'refreshToken'>
   > {
     const { email, password, name, language, theme } = data;
     const exists = await this.users.findByEmail(email);

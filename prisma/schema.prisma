@@ -91,6 +91,8 @@ model User {
   githubConnection GithubConnection?
   projects         Project[]
 
+  isVerifiedEmail Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
