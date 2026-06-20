@@ -1,5 +1,5 @@
 import { COOKIE } from '@/common/constants';
-import type { Request, Response, CookieOptions } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 
 function parseCookieHeader(cookieHeader?: string): Record<string, string> {
   if (!cookieHeader) return {};
@@ -20,7 +20,11 @@ export function getCookieValue(
   return parseCookieHeader(req?.headers.cookie)[name];
 }
 
-function createCookieOptions(path: string, maxAge: number, secure: boolean): CookieOptions {
+function createCookieOptions(
+  path: string,
+  maxAge: number,
+  secure: boolean,
+): CookieOptions {
   return {
     httpOnly: true,
     secure,

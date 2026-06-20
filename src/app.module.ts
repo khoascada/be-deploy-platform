@@ -3,6 +3,7 @@ import { ConfigModule } from '@/config/config.module';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CsrfOriginGuard } from '@/common/guards/csrf-origin.guard';
 import { AuthModule } from '@/features/auth/auth.module';
+import { GithubModule } from '@/features/github/github.module';
 import { UserModule } from '@/features/users/user.module';
 import { LoggerModule } from '@/logger/logger.module';
 import { PrismaModule } from '@/prisma/prisma.module';
@@ -18,6 +19,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     PrismaModule,
     RedisModule,
     AuthModule,
+    GithubModule,
     UserModule,
     ThrottlerModule.forRoot([
       {

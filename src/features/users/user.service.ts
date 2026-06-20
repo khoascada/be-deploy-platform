@@ -29,7 +29,6 @@ export class UserService {
 
   async findMe(id: string) {
     const user = await this.users.findById(id);
-    console.log('🚀 ~ UserService ~ findMe ~ user:', user);
     if (!user) {
       throw new NotFoundError('User not found', USER_ERROR_CODE.USER_NOT_FOUND);
     }

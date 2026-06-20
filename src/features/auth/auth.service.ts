@@ -174,6 +174,7 @@ class AuthService {
     const exists = await this.redis.exists(
       REDIS_KEY.refreshToken(payload.id, payload.jti),
     );
+    // ko tồn tại RT ở redis -> throw lỗi
     if (!exists) {
       throw new UnauthorizedError(
         'Refresh token revoked',
@@ -181,6 +182,7 @@ class AuthService {
       );
     }
 
+    // ko tồn tại user -> throw lỗi
     const user = await this.users.findById(payload.id);
     if (!user) {
       throw new UnauthorizedError(
@@ -189,6 +191,7 @@ class AuthService {
       );
     }
 
+    // delete RT cũ
     await this.redis.del(REDIS_KEY.refreshToken(payload.id, payload.jti));
 
     const { accessToken, refreshToken: newRefreshToken } =

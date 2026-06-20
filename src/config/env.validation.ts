@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+// Đảm bảo key cấu hình decode được thành đúng 32 byte trước khi dùng cho AES-256.
+const githubEncryptionKeySchema = z
+  .string()
+  .refine(
+    (value) => Buffer.from(value, 'base64').length === 32,
+    'GITHUB_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
+  );
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
@@ -8,8 +16,14 @@ export const envSchema = z.object({
   DATABASE_URL: z.string(),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRES_IN: z.string().default('7d'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('http://localhost:2805'),
+  FRONTEND_URL: z.url().default('http://localhost:2805'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  GITHUB_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+  GITHUB_OAUTH_REDIRECT_URI: z.url().optional(),
+  GITHUB_OAUTH_SCOPE: z.string().min(1).optional(),
+  GITHUB_TOKEN_ENCRYPTION_KEY: githubEncryptionKeySchema.optional(),
 });
 
 export type EnvVars = z.infer<typeof envSchema>;
@@ -19,7 +33,8 @@ export const validateEnv = (config: Record<string, unknown>): EnvVars => {
   if (!parsed.success) {
     const errors = parsed.error.flatten().fieldErrors;
     throw new Error(
-      `Invalid environment variables:\n${JSON.stringify(errors, null, 2)}`,
+      'Invalid environment variables:\n' +
+        JSON.stringify(errors, null, 2),
     );
   }
   return parsed.data;
