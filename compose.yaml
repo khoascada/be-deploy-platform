@@ -26,6 +26,18 @@
     volumes:
       - redis_data:/data
 
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: deploy-platform-redisinsight
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+
 volumes:
   postgres_data:
   redis_data:
+  redisinsight_data:
