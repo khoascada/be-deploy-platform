@@ -11,7 +11,6 @@ export const githubCallbackQuerySchema = z
     state: oauthStateParamSchema,
   })
   .strict()
-  // Callback phải có đúng một nhánh: thành công với code hoặc thất bại với error.
   .superRefine((value, ctx) => {
     const hasCode = value.code !== undefined;
     const hasError = value.error !== undefined;
@@ -56,6 +55,21 @@ export const githubUserProfileSchema = z.object({
   avatar_url: z.url().nullable(),
 });
 
+export const githubRepositorySchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1),
+  full_name: z.string().min(1),
+  private: z.boolean(),
+  default_branch: z.string().min(1),
+  html_url: z.url(),
+  owner: z.object({
+    login: z.string().min(1),
+    avatar_url: z.url().nullable(),
+  }),
+});
+
+export const githubRepositoryListSchema = z.array(githubRepositorySchema);
+
 export type GithubCallbackQueryInput = z.infer<
   typeof githubCallbackQuerySchema
 >;
@@ -63,3 +77,4 @@ export type GithubOAuthState = z.infer<typeof githubOAuthStateSchema>;
 export type GithubTokenSuccessResponse = z.infer<
   typeof githubTokenSuccessResponseSchema
 >;
+export type GithubRepository = z.infer<typeof githubRepositorySchema>;

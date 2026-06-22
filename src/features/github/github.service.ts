@@ -1,20 +1,36 @@
+import { GITHUB_ERROR_CODE } from '@/common/constants';
+import type { PaginationDto } from '@/common/dto/pagination.dto';
+import {
+  BadRequestError,
+  ConflictError,
+} from '@/common/exceptions/app.exceptions';
 import type { EnvVars } from '@/config/env.validation';
+import { RedisService } from '@/redis/redis.service';
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
-import { RedisService } from '../../redis/redis.service';
-import { encryptGithubToken } from './github-token-cipher';
+import {
+  decryptGithubToken,
+  encryptGithubToken,
+} from './github-token-cipher';
 import { GithubRepository } from './github.repository';
+import {
+  toGithubRepoListItemDto,
+} from './dto/github-repo-list-response.dto';
 import {
   githubCallbackQuerySchema,
   githubOAuthStateSchema,
+  githubRepositoryListSchema,
   githubTokenErrorResponseSchema,
   githubTokenSuccessResponseSchema,
   githubUserProfileSchema,
+  type GithubRepository as GithubApiRepository,
 } from './schemas/github.schema';
 
 const OAUTH_STATE_TTL_SECONDS = 300;
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
+const GITHUB_API_VERSION = '2022-11-28';
+const GITHUB_REPOS_PER_PAGE = 100;
 
 type CallbackFailureReason =
   | 'access_denied'
@@ -39,6 +55,7 @@ export class GithubService {
   private static readonly TOKEN_URL =
     'https://github.com/login/oauth/access_token';
   private static readonly USER_URL = 'https://api.github.com/user';
+  private static readonly USER_REPOS_URL = 'https://api.github.com/user/repos';
 
   private readonly logger = new Logger(GithubService.name);
 
@@ -48,7 +65,6 @@ export class GithubService {
     private readonly githubConnections: GithubRepository,
   ) {}
 
-  // Tạo state và PKCE, lưu chúng vào Redis rồi build URL authorize của GitHub.
   async getOAuthLoginRedirect(userId: string) {
     const clientId = this.config.get('GITHUB_CLIENT_ID', { infer: true });
     const redirectUri = this.config.get('GITHUB_OAUTH_REDIRECT_URI', {
@@ -93,7 +109,6 @@ export class GithubService {
     };
   }
 
-  // Điều phối toàn bộ callback: verify state, lấy GitHub user, tạo connection và build URL về FE.
   async oAuthCallback(rawQuery: unknown) {
     const projectsUrl = this.getProjectsUrl();
     const query = githubCallbackQuerySchema.parse(rawQuery);
@@ -169,21 +184,17 @@ export class GithubService {
       successUrl.searchParams.set('connectGithub', 'connected');
 
       return { statusCode: HttpStatus.FOUND, url: successUrl.toString() };
-      
     } catch (error) {
-      // Lỗi OAuth đã biết dùng reason an toàn; lỗi ngoài dự kiến được gom về mã chung.
       const reason =
         error instanceof GithubCallbackError
           ? error.reason
           : 'connection_failed';
 
-      // Chỉ log tên loại lỗi ngoài dự kiến, không log token, code hoặc raw response.
       if (!(error instanceof GithubCallbackError)) {
         const errorName = error instanceof Error ? error.name : 'UnknownError';
         this.logger.error('GitHub OAuth callback failed with ' + errorName);
       }
 
-      // Redirect về URL FE cố định và truyền safe reason để FE hiển thị thông báo phù hợp.
       const errorUrl = new URL(projectsUrl);
       errorUrl.searchParams.set('connectGithub', 'error');
       errorUrl.searchParams.set('reason', reason);
@@ -195,7 +206,37 @@ export class GithubService {
     }
   }
 
-  // Lấy và xóa state atomically để callback hợp lệ cũng chỉ được sử dụng đúng một lần.
+  async getListRepos(pagination: PaginationDto, userId: string) {
+    void pagination;
+
+    const githubConnection = await this.githubConnections.findByUserId(userId);
+
+    if (!githubConnection) {
+      throw new ConflictError(
+        'User has not connected GitHub yet',
+        GITHUB_ERROR_CODE.NOT_CONNECTED_GITHUB_YET,
+      );
+    }
+
+    const encryptionKey = this.config.get('GITHUB_TOKEN_ENCRYPTION_KEY', {
+      infer: true,
+    });
+    if (!encryptionKey) {
+      throw new Error('GitHub token encryption key is not configured');
+    }
+
+    const accessToken = decryptGithubToken(
+      githubConnection.accessTokenEncrypted,
+      encryptionKey,
+    );
+    const repos = await this.getListReposFromGithub(accessToken);
+
+    return {
+      items: repos.map((repo) => toGithubRepoListItemDto(repo)),
+      meta: { total: repos.length },
+    };
+  }
+
   private async consumeOAuthState(state: string) {
     const value = await this.redis.getdel('oauth:github:state:' + state);
     if (!value) {
@@ -209,7 +250,6 @@ export class GithubService {
     }
   }
 
-  // Đổi authorization code cùng PKCE verifier lấy access token từ GitHub.
   private async exchangeCode(code: string, codeVerifier: string) {
     const clientId = this.config.get('GITHUB_CLIENT_ID', { infer: true });
     const clientSecret = this.config.get('GITHUB_CLIENT_SECRET', {
@@ -262,15 +302,9 @@ export class GithubService {
     throw new GithubCallbackError('connection_failed');
   }
 
-  // Dùng access token gọi /user và validate profile trước khi tin tưởng dữ liệu GitHub.
   private async getGithubProfile(accessToken: string) {
     const response = await fetch(GithubService.USER_URL, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: 'Bearer ' + accessToken,
-        'User-Agent': 'deploy-platform',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
+      headers: this.getGithubHeaders(accessToken),
       signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
     });
 
@@ -287,14 +321,75 @@ export class GithubService {
     return profile.data;
   }
 
-  // Tạo redirect cố định từ FRONTEND_URL để không phát sinh open redirect từ input bên ngoài.
+  private async getListReposFromGithub(accessToken: string) {
+    const repos: GithubApiRepository[] = [];
+    let nextUrl: URL | null = new URL(GithubService.USER_REPOS_URL);
+    nextUrl.searchParams.set('page', '1');
+    nextUrl.searchParams.set('per_page', String(GITHUB_REPOS_PER_PAGE));
+
+    while (nextUrl) {
+      const response = await fetch(nextUrl.toString(), {
+        headers: this.getGithubHeaders(accessToken),
+        signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        throw new BadRequestError(
+          'Cannot get list repos from GitHub',
+          GITHUB_ERROR_CODE.CANNOT_GET_LIST_REPOS_FROM_GITHUB,
+        );
+      }
+
+      const payload = (await response.json()) as unknown;
+      const parsedRepos = githubRepositoryListSchema.safeParse(payload);
+      if (!parsedRepos.success) {
+        throw new BadRequestError(
+          'Cannot get list repos from GitHub',
+          GITHUB_ERROR_CODE.CANNOT_GET_LIST_REPOS_FROM_GITHUB,
+        );
+      }
+
+      repos.push(...parsedRepos.data);
+      const nextPageUrl = this.getNextPageUrl(response.headers.get('link'));
+      nextUrl = nextPageUrl ? new URL(nextPageUrl) : null;
+    }
+
+    return repos;
+  }
+
+  private getGithubHeaders(accessToken: string) {
+    return {
+      Accept: 'application/vnd.github+json',
+      Authorization: 'Bearer ' + accessToken,
+      'User-Agent': 'deploy-platform',
+      'X-GitHub-Api-Version': GITHUB_API_VERSION,
+    };
+  }
+
+  private getNextPageUrl(linkHeader: string | null) {
+    if (!linkHeader) {
+      return null;
+    }
+
+    for (const part of linkHeader.split(',')) {
+      const trimmedPart = part.trim();
+      const match = /^<([^>]+)>;\s*rel="([^"]+)"$/.exec(trimmedPart);
+      if (match?.[2] === 'next') {
+        return match[1];
+      }
+    }
+
+    return null;
+  }
+
+
+
   private getProjectsUrl() {
     const frontendUrl = this.config.get('FRONTEND_URL', { infer: true });
     return new URL('/projects', frontendUrl).toString();
   }
 }
 
-// Nhận diện Prisma P2002 để biến race-condition duplicate thành lỗi an toàn cho callback.
 function isUniqueConstraintError(error: unknown): boolean {
   return (
     typeof error === 'object' &&

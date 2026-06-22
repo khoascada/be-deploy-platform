@@ -1,9 +1,11 @@
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
+import type { PaginationDto } from '@/common/dto/pagination.dto';
 import { Controller, Get, Query, Res } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { GithubCallbackQueryDto } from './dto/github-callback-query.dto';
+import { GithubRepoListResponseDto } from './dto/github-repo-list-response.dto';
 import { GithubService } from './github.service';
 
 @ApiTags('github')
@@ -29,5 +31,16 @@ export class GithubController {
   ) {
     const redirect = await this.github.oAuthCallback(query);
     return res.redirect(redirect.statusCode, redirect.url);
+  }
+
+  // get list repo cho user
+  @ApiOperation({ summary: 'Call for get list repo from github' })
+  @ApiOkResponse({ type: GithubRepoListResponseDto })
+  @Get('repos')
+  async getListRepos(
+    @Query() pagination: PaginationDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.github.getListRepos(pagination, userId);
   }
 }

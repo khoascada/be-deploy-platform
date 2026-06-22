@@ -34,6 +34,12 @@ export class GithubRepository {
     });
   }
 
+  findByUserId(userId: string) {
+    return this.prisma.githubConnection.findUnique({
+      where: {userId}
+    })
+  }
+
   // Tạo connection mới sau khi service đã hoàn tất toàn bộ bước xác thực OAuth.
   create(data: CreateGithubConnectionData) {
     return this.prisma.githubConnection.create({ data });

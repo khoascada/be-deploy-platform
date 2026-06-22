@@ -1,4 +1,4 @@
-﻿export const COMMON_ERROR_CODE = {
+export const COMMON_ERROR_CODE = {
   BAD_REQUEST: 'BAD_REQUEST',
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
@@ -25,11 +25,22 @@ export const USER_ERROR_CODE = {
   USER_NOT_FOUND: 'USER_NOT_FOUND',
 } as const;
 
+export const GITHUB_ERROR_CODE = {
+  NOT_CONNECTED_GITHUB_YET: 'NOT_CONNECTED_GITHUB_YET',
+  CANNOT_GET_LIST_REPOS_FROM_GITHUB: 'CANNOT_GET_LIST_REPOS_FROM_GITHUB',
+} as const;
+
 export type CommonErrorCode =
   (typeof COMMON_ERROR_CODE)[keyof typeof COMMON_ERROR_CODE];
 export type AuthErrorCode =
   (typeof AUTH_ERROR_CODE)[keyof typeof AUTH_ERROR_CODE];
 export type UserErrorCode =
   (typeof USER_ERROR_CODE)[keyof typeof USER_ERROR_CODE];
+export type GithubErrorCode =
+  (typeof GITHUB_ERROR_CODE)[keyof typeof GITHUB_ERROR_CODE];
 
-export type ErrorCode = CommonErrorCode | AuthErrorCode | UserErrorCode;
+export type ErrorCode =
+  | CommonErrorCode
+  | AuthErrorCode
+  | UserErrorCode
+  | GithubErrorCode;

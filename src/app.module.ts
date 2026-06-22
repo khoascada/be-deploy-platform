@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CsrfOriginGuard } from '@/common/guards/csrf-origin.guard';
 import { AuthModule } from '@/features/auth/auth.module';
 import { GithubModule } from '@/features/github/github.module';
-import { ProjectModule } from '@/features/project/project.module';
+import { ProjectModule } from '@/features/projects/project.module';
 import { UserModule } from '@/features/users/user.module';
 import { LoggerModule } from '@/logger/logger.module';
 import { PrismaModule } from '@/prisma/prisma.module';
