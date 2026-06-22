@@ -1,9 +1,11 @@
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
-import type { PaginationDto } from '@/common/dto/pagination.dto';
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { GithubBranchListResponseDto } from './dto/github-branch-list-response.dto';
+import { GithubBranchParamsDto } from './dto/github-branch-params.dto';
+import { GithubCacheRefreshQueryDto } from './dto/github-cache-refresh-query.dto';
 import { GithubCallbackQueryDto } from './dto/github-callback-query.dto';
 import { GithubRepoListResponseDto } from './dto/github-repo-list-response.dto';
 import { GithubService } from './github.service';
@@ -15,7 +17,6 @@ export class GithubController {
 
   @ApiOperation({ summary: 'Redirect user to GitHub OAuth login' })
   @Get('oauth/login')
-  // Chuyển browser của user sang trang authorize GitHub bằng HTTP 302.
   async oauthLogin(@Res() res: Response, @CurrentUser('id') userId: string) {
     const redirect = await this.github.getOAuthLoginRedirect(userId);
     return res.redirect(redirect.statusCode, redirect.url);
@@ -24,7 +25,6 @@ export class GithubController {
   @ApiOperation({ summary: 'Callback for GitHub OAuth' })
   @Public()
   @Get('oauth/callback')
-  // Nhận kết quả GitHub trả về và tiếp tục redirect browser theo kết quả xử lý của service.
   async oauthCallback(
     @Query() query: GithubCallbackQueryDto,
     @Res() res: Response,
@@ -33,14 +33,29 @@ export class GithubController {
     return res.redirect(redirect.statusCode, redirect.url);
   }
 
-  // get list repo cho user
   @ApiOperation({ summary: 'Call for get list repo from github' })
   @ApiOkResponse({ type: GithubRepoListResponseDto })
   @Get('repos')
   async getListRepos(
-    @Query() pagination: PaginationDto,
     @CurrentUser('id') userId: string,
+    @Query() query: GithubCacheRefreshQueryDto,
   ) {
-    return this.github.getListRepos(pagination, userId);
+    return this.github.getListRepos(userId, query.isRefresh);
+  }
+
+  @ApiOperation({ summary: 'Call for get list branch in repo from github' })
+  @ApiOkResponse({ type: GithubBranchListResponseDto })
+  @Get('repos/:owner/:repo/branches')
+  async getListBranches(
+    @CurrentUser('id') userId: string,
+    @Param() params: GithubBranchParamsDto,
+    @Query() query: GithubCacheRefreshQueryDto,
+  ) {
+    return this.github.getListBranches(
+      userId,
+      params.owner,
+      params.repo,
+      query.isRefresh,
+    );
   }
 }

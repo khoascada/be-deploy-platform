@@ -28,9 +28,17 @@ describe('GithubService', () => {
     ReturnType<RedisService['setex']>,
     Parameters<RedisService['setex']>
   >();
+  const redisGet = jest.fn<
+    ReturnType<RedisService['get']>,
+    Parameters<RedisService['get']>
+  >();
   const redisGetdel = jest.fn<
     ReturnType<RedisService['getdel']>,
     Parameters<RedisService['getdel']>
+  >();
+  const redisDel = jest.fn<
+    ReturnType<RedisService['del']>,
+    Parameters<RedisService['del']>
   >();
   const findUserWithConnection = jest.fn<
     ReturnType<GithubRepository['findUserWithConnection']>,
@@ -51,7 +59,9 @@ describe('GithubService', () => {
 
   const redis = {
     setex: redisSetex,
+    get: redisGet,
     getdel: redisGetdel,
+    del: redisDel,
   } as unknown as RedisService;
   const githubConnections = {
     findUserWithConnection,
@@ -64,6 +74,9 @@ describe('GithubService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    redisGet.mockResolvedValue(null);
+    redisDel.mockResolvedValue(0);
+    redisSetex.mockResolvedValue('OK');
     service = new GithubService(config as never, redis, githubConnections);
   });
 
@@ -267,9 +280,7 @@ describe('GithubService', () => {
   it('rejects listing repos when the user has not connected GitHub', async () => {
     findByUserId.mockResolvedValue(null);
 
-    await expect(
-      service.getListRepos({ page: 1, limit: 10 }, 'user-1'),
-    ).rejects.toMatchObject({
+    await expect(service.getListRepos('user-1', false)).rejects.toMatchObject({
       response: {
         code: 'NOT_CONNECTED_GITHUB_YET',
         message: 'User has not connected GitHub yet',
@@ -278,7 +289,50 @@ describe('GithubService', () => {
     });
   });
 
-  it('returns compact repo items when GitHub responds with a single page', async () => {
+  it('returns cached repos without calling GitHub when cache is valid', async () => {
+    redisGet.mockResolvedValue(
+      JSON.stringify({
+        items: [
+          {
+            id: '1',
+            name: 'cached-repo',
+            fullName: 'octocat/cached-repo',
+            owner: {
+              login: 'octocat',
+              avatarUrl: null,
+            },
+            url: 'https://github.com/octocat/cached-repo',
+            defaultBranch: 'main',
+            private: false,
+          },
+        ],
+        meta: { total: 1 },
+      }),
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(service.getListRepos('user-1', false)).resolves.toEqual({
+      items: [
+        {
+          id: '1',
+          name: 'cached-repo',
+          fullName: 'octocat/cached-repo',
+          owner: {
+            login: 'octocat',
+            avatarUrl: null,
+          },
+          url: 'https://github.com/octocat/cached-repo',
+          defaultBranch: 'main',
+          private: false,
+        },
+      ],
+      meta: { total: 1 },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(findByUserId).not.toHaveBeenCalled();
+  });
+
+  it('fetches repos from GitHub and caches them when cache misses', async () => {
     findByUserId.mockResolvedValue(connectedGithubAccount());
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       jsonResponse([
@@ -297,9 +351,7 @@ describe('GithubService', () => {
       ]),
     );
 
-    await expect(
-      service.getListRepos({ page: 1, limit: 10 }, 'user-1'),
-    ).resolves.toEqual({
+    await expect(service.getListRepos('user-1', false)).resolves.toEqual({
       items: [
         {
           id: '1',
@@ -317,20 +369,104 @@ describe('GithubService', () => {
       meta: { total: 1 },
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.github.com/user/repos?page=1&per_page=100',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Accept: 'application/vnd.github+json',
-          Authorization: 'Bearer gho_access_token',
-          'User-Agent': 'deploy-platform',
-          'X-GitHub-Api-Version': '2022-11-28',
-        }),
-      }),
+    expect(redisSetex).toHaveBeenCalledWith(
+      'github:repos:user-1',
+      3600,
+      expect.any(String),
     );
+    expect(JSON.parse(redisSetex.mock.calls[0][2])).toEqual({
+      items: [
+        {
+          id: '1',
+          name: 'deploy-platform',
+          fullName: 'octocat/deploy-platform',
+          owner: {
+            login: 'octocat',
+            avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4',
+          },
+          url: 'https://github.com/octocat/deploy-platform',
+          defaultBranch: 'main',
+          private: false,
+        },
+      ],
+      meta: { total: 1 },
+    });
   });
 
-  it('follows Link rel="next" and merges all repo pages', async () => {
+  it('forces a GitHub refresh and overwrites cache when isRefresh is true', async () => {
+    redisGet.mockResolvedValue(
+      JSON.stringify({
+        items: [],
+        meta: { total: 0 },
+      }),
+    );
+    findByUserId.mockResolvedValue(connectedGithubAccount());
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      jsonResponse([
+        {
+          id: 1,
+          name: 'fresh-repo',
+          full_name: 'octocat/fresh-repo',
+          private: false,
+          default_branch: 'main',
+          html_url: 'https://github.com/octocat/fresh-repo',
+          owner: {
+            login: 'octocat',
+            avatar_url: null,
+          },
+        },
+      ]),
+    );
+
+    await expect(service.getListRepos('user-1', true)).resolves.toEqual({
+      items: [
+        {
+          id: '1',
+          name: 'fresh-repo',
+          fullName: 'octocat/fresh-repo',
+          owner: {
+            login: 'octocat',
+            avatarUrl: null,
+          },
+          url: 'https://github.com/octocat/fresh-repo',
+          defaultBranch: 'main',
+          private: false,
+        },
+      ],
+      meta: { total: 1 },
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(redisGet).not.toHaveBeenCalled();
+    expect(redisSetex).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops invalid cached data and refetches from GitHub', async () => {
+    redisGet.mockResolvedValue('not-json');
+    findByUserId.mockResolvedValue(connectedGithubAccount());
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      jsonResponse([
+        {
+          id: 1,
+          name: 'deploy-platform',
+          full_name: 'octocat/deploy-platform',
+          private: false,
+          default_branch: 'main',
+          html_url: 'https://github.com/octocat/deploy-platform',
+          owner: {
+            login: 'octocat',
+            avatar_url: null,
+          },
+        },
+      ]),
+    );
+
+    await service.getListRepos('user-1', false);
+
+    expect(redisDel).toHaveBeenCalledWith('github:repos:user-1');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows Link rel="next" and merges all repo pages before caching', async () => {
     findByUserId.mockResolvedValue(connectedGithubAccount());
     const fetchSpy = jest
       .spyOn(global, 'fetch')
@@ -367,9 +503,7 @@ describe('GithubService', () => {
         ]),
       );
 
-    await expect(
-      service.getListRepos({ page: 1, limit: 10 }, 'user-1'),
-    ).resolves.toEqual({
+    await expect(service.getListRepos('user-1', false)).resolves.toEqual({
       items: [
         {
           id: '1',
@@ -420,9 +554,7 @@ describe('GithubService', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ message: 'Bad credentials' }, 401));
 
-    await expect(
-      service.getListRepos({ page: 1, limit: 10 }, 'user-1'),
-    ).rejects.toMatchObject({
+    await expect(service.getListRepos('user-1', false)).rejects.toMatchObject({
       response: {
         code: 'CANNOT_GET_LIST_REPOS_FROM_GITHUB',
         message: 'Cannot get list repos from GitHub',
@@ -437,9 +569,7 @@ describe('GithubService', () => {
       jsonResponse([{ id: 'invalid-id' }]),
     );
 
-    await expect(
-      service.getListRepos({ page: 1, limit: 10 }, 'user-1'),
-    ).rejects.toMatchObject({
+    await expect(service.getListRepos('user-1', false)).rejects.toMatchObject({
       response: {
         code: 'CANNOT_GET_LIST_REPOS_FROM_GITHUB',
         message: 'Cannot get list repos from GitHub',

@@ -1,5 +1,4 @@
 import { GITHUB_ERROR_CODE } from '@/common/constants';
-import type { PaginationDto } from '@/common/dto/pagination.dto';
 import {
   BadRequestError,
   ConflictError,
@@ -9,28 +8,32 @@ import { RedisService } from '@/redis/redis.service';
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
-import {
-  decryptGithubToken,
-  encryptGithubToken,
-} from './github-token-cipher';
+import { toGithubBranchListItemDto } from './dto/github-branch-list-response.dto';
+import { toGithubRepoListItemDto } from './dto/github-repo-list-response.dto';
+import { decryptGithubToken, encryptGithubToken } from './github-token-cipher';
 import { GithubRepository } from './github.repository';
 import {
-  toGithubRepoListItemDto,
-} from './dto/github-repo-list-response.dto';
-import {
+  githubBranchListResponseSchema,
+  githubBranchListSchema,
   githubCallbackQuerySchema,
   githubOAuthStateSchema,
+  githubRepoListResponseSchema,
   githubRepositoryListSchema,
   githubTokenErrorResponseSchema,
   githubTokenSuccessResponseSchema,
   githubUserProfileSchema,
+  type GithubBranch,
+  type GithubBranchListResponse,
   type GithubRepository as GithubApiRepository,
+  type GithubRepoListResponse,
 } from './schemas/github.schema';
 
 const OAUTH_STATE_TTL_SECONDS = 300;
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
 const GITHUB_API_VERSION = '2022-11-28';
 const GITHUB_REPOS_PER_PAGE = 100;
+const GITHUB_BRANCHES_PER_PAGE = 100;
+const GITHUB_CACHE_TTL_SECONDS = 3600;
 
 type CallbackFailureReason =
   | 'access_denied'
@@ -56,6 +59,7 @@ export class GithubService {
     'https://github.com/login/oauth/access_token';
   private static readonly USER_URL = 'https://api.github.com/user';
   private static readonly USER_REPOS_URL = 'https://api.github.com/user/repos';
+  private static readonly REPO_BRANCHES_URL = 'https://api.github.com/repos';
 
   private readonly logger = new Logger(GithubService.name);
 
@@ -206,35 +210,75 @@ export class GithubService {
     }
   }
 
-  async getListRepos(pagination: PaginationDto, userId: string) {
-    void pagination;
+  async getListRepos(userId: string, isRefresh: boolean) {
+    const cacheKey = this.getRepoCacheKey(userId);
 
-    const githubConnection = await this.githubConnections.findByUserId(userId);
-
-    if (!githubConnection) {
-      throw new ConflictError(
-        'User has not connected GitHub yet',
-        GITHUB_ERROR_CODE.NOT_CONNECTED_GITHUB_YET,
-      );
+    if (!isRefresh) {
+      const cachedValue = await this.redis.get(cacheKey);
+      const cachedRepos = this.parseCachedRepoList(cachedValue);
+      if (cachedRepos) {
+        return cachedRepos;
+      }
+      if (cachedValue !== null) {
+        await this.redis.del(cacheKey);
+      }
     }
 
-    const encryptionKey = this.config.get('GITHUB_TOKEN_ENCRYPTION_KEY', {
-      infer: true,
-    });
-    if (!encryptionKey) {
-      throw new Error('GitHub token encryption key is not configured');
-    }
-
-    const accessToken = decryptGithubToken(
-      githubConnection.accessTokenEncrypted,
-      encryptionKey,
-    );
+    const accessToken = await this.getGithubAccessToken(userId);
     const repos = await this.getListReposFromGithub(accessToken);
 
-    return {
+    const response: GithubRepoListResponse = {
       items: repos.map((repo) => toGithubRepoListItemDto(repo)),
       meta: { total: repos.length },
     };
+
+    await this.redis.setex(
+      cacheKey,
+      GITHUB_CACHE_TTL_SECONDS,
+      JSON.stringify(response),
+    );
+
+    return response;
+  }
+
+  async getListBranches(
+    userId: string,
+    owner: string,
+    repo: string,
+    isRefresh: boolean,
+  ) {
+    const cacheKey = this.getBranchCacheKey(userId, owner, repo);
+
+    if (!isRefresh) {
+      const cachedValue = await this.redis.get(cacheKey);
+      const cachedBranches = this.parseCachedBranchList(cachedValue);
+      if (cachedBranches) {
+        return cachedBranches;
+      }
+      if (cachedValue !== null) {
+        await this.redis.del(cacheKey);
+      }
+    }
+
+    const accessToken = await this.getGithubAccessToken(userId);
+    const branches = await this.getListBranchesFromGithub(
+      accessToken,
+      owner,
+      repo,
+    );
+
+    const response: GithubBranchListResponse = {
+      items: branches.map((branch) => toGithubBranchListItemDto(branch)),
+      meta: { total: branches.length },
+    };
+
+    await this.redis.setex(
+      cacheKey,
+      GITHUB_CACHE_TTL_SECONDS,
+      JSON.stringify(response),
+    );
+
+    return response;
   }
 
   private async consumeOAuthState(state: string) {
@@ -321,6 +365,29 @@ export class GithubService {
     return profile.data;
   }
 
+  private async getGithubAccessToken(userId: string) {
+    const githubConnection = await this.githubConnections.findByUserId(userId);
+
+    if (!githubConnection) {
+      throw new ConflictError(
+        'User has not connected GitHub yet',
+        GITHUB_ERROR_CODE.NOT_CONNECTED_GITHUB_YET,
+      );
+    }
+
+    const encryptionKey = this.config.get('GITHUB_TOKEN_ENCRYPTION_KEY', {
+      infer: true,
+    });
+    if (!encryptionKey) {
+      throw new Error('GitHub token encryption key is not configured');
+    }
+
+    return decryptGithubToken(
+      githubConnection.accessTokenEncrypted,
+      encryptionKey,
+    );
+  }
+
   private async getListReposFromGithub(accessToken: string) {
     const repos: GithubApiRepository[] = [];
     let nextUrl: URL | null = new URL(GithubService.USER_REPOS_URL);
@@ -357,6 +424,48 @@ export class GithubService {
     return repos;
   }
 
+  private async getListBranchesFromGithub(
+    accessToken: string,
+    owner: string,
+    repo: string,
+  ) {
+    const branches: GithubBranch[] = [];
+    let nextUrl: URL | null = new URL(
+      GithubService.REPO_BRANCHES_URL + '/' + owner + '/' + repo + '/branches',
+    );
+    nextUrl.searchParams.set('page', '1');
+    nextUrl.searchParams.set('per_page', String(GITHUB_BRANCHES_PER_PAGE));
+
+    while (nextUrl) {
+      const response = await fetch(nextUrl.toString(), {
+        headers: this.getGithubHeaders(accessToken),
+        signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        throw new BadRequestError(
+          'Cannot get list branches from GitHub',
+          GITHUB_ERROR_CODE.CANNOT_GET_LIST_REPOS_FROM_GITHUB,
+        );
+      }
+
+      const payload = (await response.json()) as unknown;
+      const parsedBranches = githubBranchListSchema.safeParse(payload);
+      if (!parsedBranches.success) {
+        throw new BadRequestError(
+          'Cannot get list branches from GitHub',
+          GITHUB_ERROR_CODE.CANNOT_GET_LIST_REPOS_FROM_GITHUB,
+        );
+      }
+
+      branches.push(...parsedBranches.data);
+      const nextPageUrl = this.getNextPageUrl(response.headers.get('link'));
+      nextUrl = nextPageUrl ? new URL(nextPageUrl) : null;
+    }
+
+    return branches;
+  }
+
   private getGithubHeaders(accessToken: string) {
     return {
       Accept: 'application/vnd.github+json',
@@ -364,6 +473,44 @@ export class GithubService {
       'User-Agent': 'deploy-platform',
       'X-GitHub-Api-Version': GITHUB_API_VERSION,
     };
+  }
+
+  private parseCachedRepoList(value: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    try {
+      const parsed = githubRepoListResponseSchema.safeParse(
+        JSON.parse(value) as unknown,
+      );
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseCachedBranchList(value: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    try {
+      const parsed = githubBranchListResponseSchema.safeParse(
+        JSON.parse(value) as unknown,
+      );
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private getRepoCacheKey(userId: string) {
+    return 'github:repos:' + userId;
+  }
+
+  private getBranchCacheKey(userId: string, owner: string, repo: string) {
+    return 'github:branches:' + userId + ':' + owner + ':' + repo;
   }
 
   private getNextPageUrl(linkHeader: string | null) {
@@ -381,8 +528,6 @@ export class GithubService {
 
     return null;
   }
-
-
 
   private getProjectsUrl() {
     const frontendUrl = this.config.get('FRONTEND_URL', { infer: true });
