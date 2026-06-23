@@ -2,6 +2,7 @@ import { GITHUB_ERROR_CODE } from '@/common/constants';
 import {
   BadRequestError,
   ConflictError,
+  NotFoundError,
 } from '@/common/exceptions/app.exceptions';
 import type { EnvVars } from '@/config/env.validation';
 import { RedisService } from '@/redis/redis.service';
@@ -10,7 +11,11 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
 import { toGithubBranchListItemDto } from './dto/github-branch-list-response.dto';
 import { toGithubRepoListItemDto } from './dto/github-repo-list-response.dto';
-import { decryptGithubToken, encryptGithubToken } from './github-token-cipher';
+import {
+  decryptGithubToken,
+  encryptGithubToken,
+  encryptGithubWebhookSecret,
+} from './github-token-cipher';
 import { GithubRepository } from './github.repository';
 import {
   githubBranchListResponseSchema,
@@ -22,9 +27,9 @@ import {
   githubTokenErrorResponseSchema,
   githubTokenSuccessResponseSchema,
   githubUserProfileSchema,
+  type GithubRepository as GithubApiRepository,
   type GithubBranch,
   type GithubBranchListResponse,
-  type GithubRepository as GithubApiRepository,
   type GithubRepoListResponse,
 } from './schemas/github.schema';
 
@@ -529,12 +534,82 @@ export class GithubService {
     return null;
   }
 
+  async resolveRepositoryById(userId: string, githubRepoId: string) {
+    const repos = await this.getListRepos(userId, true);
+    const repo = repos.items.find((item) => item.id === githubRepoId);
+
+    if (!repo) {
+      throw new NotFoundError('GitHub repository not found');
+    }
+
+    return repo;
+  }
+
+  async createRepositoryWebhook(userId: string, owner: string, repo: string) {
+    const accessToken = await this.getGithubAccessToken(userId);
+    const encryptionKey = this.config.get('GITHUB_TOKEN_ENCRYPTION_KEY', {
+      infer: true,
+    });
+    if (!encryptionKey) {
+      throw new Error('GitHub token encryption key is not configured');
+    }
+
+    const webhookSecret = randomBytes(32).toString('hex');
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/hooks`,
+      {
+        method: 'POST',
+        headers: {
+          ...this.getGithubHeaders(accessToken),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'web',
+          active: true,
+          events: ['push'],
+          config: {
+            url: this.getWebhookUrl(),
+            content_type: 'json',
+            secret: webhookSecret,
+          },
+        }),
+        signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+      },
+    );
+
+    const payload = (await response.json()) as unknown;
+    if (!response.ok) {
+      throw new BadRequestError('Cannot create repository webhook');
+    }
+
+    const webhookId = (payload as { id?: unknown }).id;
+    if (typeof webhookId !== 'number' || !Number.isInteger(webhookId)) {
+      throw new BadRequestError('Cannot create repository webhook');
+    }
+
+    return {
+      webhookId: String(webhookId),
+      webhookSecretEncrypted: encryptGithubWebhookSecret(
+        webhookSecret,
+        encryptionKey,
+      ),
+    };
+  }
+
   private getProjectsUrl() {
     const frontendUrl = this.config.get('FRONTEND_URL', { infer: true });
     return new URL('/projects', frontendUrl).toString();
   }
-}
 
+  private getWebhookUrl() {
+    const ngrokUrl = this.config.get('NGROK_URL', { infer: true });
+    if (!ngrokUrl) {
+      throw new Error('NGROK_URL is not configured');
+    }
+
+    return new URL('/api/v1/github/webhooks/repository', ngrokUrl).toString();
+  }
+}
 function isUniqueConstraintError(error: unknown): boolean {
   return (
     typeof error === 'object' &&

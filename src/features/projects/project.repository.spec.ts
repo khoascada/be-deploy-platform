@@ -71,12 +71,12 @@ function createProjectData() {
     githubRepoId: '123',
     name: 'Demo',
     slug: 'demo',
+    deployBranch: 'main',
     repoFullName: 'octocat/demo',
     repoOwner: 'octocat',
     repoName: 'demo',
     repoUrl: 'https://github.com/octocat/demo',
     githubDefaultBranch: 'main',
-    deployBranch: 'main',
     autoDeploy: false,
   };
 }

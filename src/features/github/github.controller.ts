@@ -1,6 +1,17 @@
-import { CurrentUser } from '@/common/decorators/current-user.decorator';
+﻿import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
-import { Controller, Get, Param, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { GithubBranchListResponseDto } from './dto/github-branch-list-response.dto';
@@ -57,5 +68,25 @@ export class GithubController {
       params.repo,
       query.isRefresh,
     );
+  }
+
+  @ApiOperation({ summary: 'GitHub repository webhook receiver' })
+  @Public()
+  @Post('webhooks/repository')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  handleRepositoryWebhook(
+    @Headers('x-github-event') event: string,
+    @Headers('x-github-delivery') deliveryId: string,
+    @Headers('x-github-hook-id') hookId: string,
+    @Headers('x-hub-signature-256') signature: string,
+    @Body() payload: unknown,
+  ) {
+    console.log('GitHub webhook received:', {
+      event,
+      deliveryId,
+      hookId,
+    });
+
+    return;
   }
 }

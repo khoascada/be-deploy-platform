@@ -6,7 +6,8 @@ import {
 import { z } from 'zod';
 
 const ALGORITHM = 'aes-256-gcm';
-const AAD = Buffer.from('github-access-token:v1', 'utf8');
+const ACCESS_TOKEN_AAD = Buffer.from('github-access-token:v1', 'utf8');
+const WEBHOOK_SECRET_AAD = Buffer.from('github-webhook-secret:v1', 'utf8');
 
 const encryptedEnvelopeSchema = z.object({
   alg: z.literal('AES-256-GCM'),
@@ -16,15 +17,54 @@ const encryptedEnvelopeSchema = z.object({
   ciphertext: z.string().min(1),
 });
 
-// Mã hóa access token bằng AES-256-GCM để không lưu token dạng plaintext trong database.
+// M� h�a access token b?ng AES-256-GCM d? kh�ng luu token d?ng plaintext trong database.
 export function encryptGithubToken(
   plaintext: string,
   encryptionKeyBase64: string,
 ): string {
+  return encryptEnvelope(plaintext, encryptionKeyBase64, ACCESS_TOKEN_AAD);
+}
+
+// M� h�a webhook secret tru?c khi luu v�o database.
+export function encryptGithubWebhookSecret(
+  plaintext: string,
+  encryptionKeyBase64: string,
+): string {
+  return encryptEnvelope(plaintext, encryptionKeyBase64, WEBHOOK_SECRET_AAD);
+}
+
+// Gi?i m� encrypted envelope khi backend c?n d�ng access token d? g?i GitHub API.
+export function decryptGithubToken(
+  encryptedEnvelope: string,
+  encryptionKeyBase64: string,
+): string {
+  const key = decodeKey(encryptionKeyBase64);
+  const envelope = encryptedEnvelopeSchema.parse(
+    JSON.parse(encryptedEnvelope) as unknown,
+  );
+  const decipher = createDecipheriv(
+    ALGORITHM,
+    key,
+    Buffer.from(envelope.iv, 'base64'),
+  );
+  decipher.setAAD(ACCESS_TOKEN_AAD);
+  decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
+
+  return Buffer.concat([
+    decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function encryptEnvelope(
+  plaintext: string,
+  encryptionKeyBase64: string,
+  aad: Buffer,
+): string {
   const key = decodeKey(encryptionKeyBase64);
   const iv = randomBytes(12);
   const cipher = createCipheriv(ALGORITHM, key, iv);
-  cipher.setAAD(AAD);
+  cipher.setAAD(aad);
 
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, 'utf8'),
@@ -40,30 +80,7 @@ export function encryptGithubToken(
   });
 }
 
-// Giải mã encrypted envelope khi backend cần dùng access token để gọi GitHub API.
-export function decryptGithubToken(
-  encryptedEnvelope: string,
-  encryptionKeyBase64: string,
-): string {
-  const key = decodeKey(encryptionKeyBase64);
-  const envelope = encryptedEnvelopeSchema.parse(
-    JSON.parse(encryptedEnvelope) as unknown,
-  );
-  const decipher = createDecipheriv(
-    ALGORITHM,
-    key,
-    Buffer.from(envelope.iv, 'base64'),
-  );
-  decipher.setAAD(AAD);
-  decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
-
-  return Buffer.concat([
-    decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
-    decipher.final(),
-  ]).toString('utf8');
-}
-
-// Decode key từ base64 và bắt buộc key có đúng 32 byte theo yêu cầu của AES-256.
+// Decode key t? base64 v� b?t bu?c key c� d�ng 32 byte theo y�u c?u c?a AES-256.
 function decodeKey(encryptionKeyBase64: string): Buffer {
   const key = Buffer.from(encryptionKeyBase64, 'base64');
   if (key.length !== 32) {

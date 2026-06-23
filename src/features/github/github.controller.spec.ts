@@ -74,4 +74,11 @@ describe('GithubController', () => {
         'http://localhost:2805/projects?github=error&reason=access_denied',
       );
   });
+
+  it('accepts repository webhooks', async () => {
+    await request(app.getHttpServer())
+      .post('/github/webhooks/repository')
+      .send({})
+      .expect(204);
+  });
 });

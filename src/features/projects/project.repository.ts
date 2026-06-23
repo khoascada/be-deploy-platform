@@ -1,11 +1,12 @@
 import { COMMON_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { PrismaService } from '@/prisma/prisma.service';
-import type { Prisma } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 
 const HOST_PORT_CONFLICT_MESSAGE = 'Host port already exists';
-const GITHUB_REPO_CONFLICT_MESSAGE = 'GitHub repository already exists for this user';
+const GITHUB_REPO_CONFLICT_MESSAGE =
+  'GitHub repository already exists for this user';
 const PROJECT_SLUG_CONFLICT_MESSAGE = 'Project slug already exists';
 
 @Injectable()
@@ -17,6 +18,14 @@ export class ProjectRepository {
       skip: args.skip,
       take: args.take,
       orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        repoFullName: true,
+        deployBranch: true,
+        repoUrl: true,
+        webhookId: true,
+      },
     });
   }
 
@@ -35,6 +44,17 @@ export class ProjectRepository {
     });
 
     return items.map((item) => item.slug);
+  }
+
+  async updateWebhookConfig(
+    projectId: string,
+    webhookId: string,
+    webhookSecretEncrypted: string,
+  ) {
+    return this.prisma.project.update({
+      where: { id: projectId },
+      data: { webhookId, webhookSecretEncrypted },
+    });
   }
 
   async create(data: Prisma.ProjectUncheckedCreateInput) {
