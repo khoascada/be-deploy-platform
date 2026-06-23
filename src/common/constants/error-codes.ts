@@ -30,6 +30,10 @@ export const GITHUB_ERROR_CODE = {
   CANNOT_GET_LIST_REPOS_FROM_GITHUB: 'CANNOT_GET_LIST_REPOS_FROM_GITHUB',
 } as const;
 
+export const PROJECT_ERROR_CODE = {
+  NOT_ACCESS_TO_PROJECT: 'NOT_ACCESS_TO_PROJECT',
+} as const;
+
 export type CommonErrorCode =
   (typeof COMMON_ERROR_CODE)[keyof typeof COMMON_ERROR_CODE];
 export type AuthErrorCode =
@@ -38,9 +42,12 @@ export type UserErrorCode =
   (typeof USER_ERROR_CODE)[keyof typeof USER_ERROR_CODE];
 export type GithubErrorCode =
   (typeof GITHUB_ERROR_CODE)[keyof typeof GITHUB_ERROR_CODE];
+export type ProjectErrorCode =
+  (typeof PROJECT_ERROR_CODE)[keyof typeof PROJECT_ERROR_CODE];
 
 export type ErrorCode =
   | CommonErrorCode
   | AuthErrorCode
   | UserErrorCode
-  | GithubErrorCode;
+  | GithubErrorCode
+  | ProjectErrorCode;

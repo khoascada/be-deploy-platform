@@ -1,8 +1,14 @@
-import { COMMON_ERROR_CODE } from '@/common/constants';
+import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
 import type { PaginationDto } from '@/common/dto/pagination.dto';
-import { ConflictError } from '@/common/exceptions/app.exceptions';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '@/common/exceptions/app.exceptions';
 import { Injectable } from '@nestjs/common';
 import { GithubService } from '../github/github.service';
+import { toProjectDetailDto } from './dto/project-detail-response.dto';
+import { toProjectListResponseDto } from './dto/project-list-response.dto';
 import { ProjectRepository } from './project.repository';
 import type { CreateProjectInput } from './schemas/project.schema';
 import { escapeRegExp, slugify } from './utils/project.utils';
@@ -23,15 +29,32 @@ export class ProjectService {
       this.projects.count(),
     ]);
 
-    return {
-      items: items.map(withWebhookProvisionStatus),
+    return toProjectListResponseDto({
+      items,
       meta: {
         page: pagination.page,
         limit: pagination.limit,
         total,
         totalPages: Math.ceil(total / pagination.limit),
       },
-    };
+    });
+  }
+
+  async getDetail(userId: string, id: string) {
+    const project = await this.projects.findById(id);
+
+    if (!project) {
+      throw new NotFoundError('Project not found', COMMON_ERROR_CODE.NOT_FOUND);
+    }
+
+    if (project.ownerId !== userId) {
+      throw new ForbiddenError(
+        'You do not have access to this project',
+        PROJECT_ERROR_CODE.NOT_ACCESS_TO_PROJECT,
+      );
+    }
+
+    return toProjectDetailDto(project);
   }
 
   async createProject(ownerId: string, input: CreateProjectInput) {
@@ -142,9 +165,9 @@ function isSlugConflict(error: unknown): error is ConflictError {
   );
 }
 
-function withWebhookProvisionStatus<T extends { webhookId: string | null; webhookSecretEncrypted?: unknown }>(
-  project: T,
-) {
+function withWebhookProvisionStatus<
+  T extends { webhookId: string | null; webhookSecretEncrypted?: unknown },
+>(project: T) {
   const { webhookSecretEncrypted: _webhookSecretEncrypted, ...rest } = project;
 
   return {

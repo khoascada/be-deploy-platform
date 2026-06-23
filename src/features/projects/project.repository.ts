@@ -13,6 +13,12 @@ const PROJECT_SLUG_CONFLICT_MESSAGE = 'Project slug already exists';
 export class ProjectRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  findById(id: string) {
+    return this.prisma.project.findUnique({
+      where: { id },
+    });
+  }
+
   findAll(args: { skip: number; take: number }) {
     return this.prisma.project.findMany({
       skip: args.skip,
@@ -25,6 +31,26 @@ export class ProjectRepository {
         deployBranch: true,
         repoUrl: true,
         webhookId: true,
+        _count: {
+          select: {
+            deployments: true,
+          },
+        },
+        deployments: {
+          take: 1,
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            id: true,
+            status: true,
+            commitSha: true,
+            commitMessage: true,
+            createdAt: true,
+            finishedAt: true,
+            trigger: true,
+          },
+        },
       },
     });
   }

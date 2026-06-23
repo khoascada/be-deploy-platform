@@ -34,7 +34,7 @@ describe('ProjectService', () => {
     service = new ProjectService(projects, github);
   });
 
-  it('maps webhook provisioning state in list responses', async () => {
+  it('maps webhook provisioning state and latest deploy in list responses', async () => {
     findAll.mockResolvedValue([
       {
         id: 'project-1',
@@ -43,6 +43,8 @@ describe('ProjectService', () => {
         deployBranch: 'main',
         repoUrl: 'https://github.com/octocat/my-app',
         webhookId: null,
+        _count: { deployments: 0 },
+        deployments: [],
       },
       {
         id: 'project-2',
@@ -51,6 +53,18 @@ describe('ProjectService', () => {
         deployBranch: 'main',
         repoUrl: 'https://github.com/octocat/next-app',
         webhookId: '123',
+        _count: { deployments: 2 },
+        deployments: [
+          {
+            id: 'deploy-2',
+            status: 'SUCCESS',
+            commitSha: 'abcdef1234567890',
+            commitMessage: 'Fix deploy',
+            createdAt: new Date('2026-06-23T10:00:00.000Z'),
+            finishedAt: new Date('2026-06-23T10:05:00.000Z'),
+            trigger: 'GITHUB_PUSH',
+          },
+        ],
       },
     ]);
     count.mockResolvedValue(2);
@@ -60,10 +74,22 @@ describe('ProjectService', () => {
         expect.objectContaining({
           id: 'project-1',
           isWebhookProvisioned: false,
+          deployCount: 0,
+          latestDeploy: null,
         }),
         expect.objectContaining({
           id: 'project-2',
           isWebhookProvisioned: true,
+          deployCount: 2,
+          latestDeploy: expect.objectContaining({
+            id: 'deploy-2',
+            status: 'SUCCESS',
+            commitSha: 'abcdef1234567890',
+            commitMessage: 'Fix deploy',
+            createdAt: '2026-06-23T10:00:00.000Z',
+            finishedAt: '2026-06-23T10:05:00.000Z',
+            trigger: 'webhook',
+          }),
         }),
       ],
       meta: {
