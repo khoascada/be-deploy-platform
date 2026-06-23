@@ -16,10 +16,13 @@ export class ProjectRepository {
   findById(id: string) {
     return this.prisma.project.findUnique({
       where: { id },
+      include: {
+        deployments: true
+      }
     });
   }
 
-  findAll(args: { skip: number; take: number }) {
+  findAll(args: { skip: number; take: number, userId: string }) {
     return this.prisma.project.findMany({
       skip: args.skip,
       take: args.take,
@@ -52,11 +55,18 @@ export class ProjectRepository {
           },
         },
       },
+      where: {
+        ownerId: args.userId
+      }
     });
   }
 
-  count() {
-    return this.prisma.project.count();
+  count(userId: string) {
+    return this.prisma.project.count({
+      where: {
+        ownerId: userId
+      }
+    });
   }
 
   async findSlugsByBase(ownerId: string, baseSlug: string) {

@@ -15,8 +15,8 @@ export class ProjectController {
   @ApiOperation({ summary: 'Get list projects' })
   @ApiOkResponse({ type: ProjectListResponseDto })
   @Get()
-  findAll(@Query() pagination: PaginationDto) {
-    return this.projects.findAll(pagination);
+  findAll(@Query() pagination: PaginationDto, @CurrentUser('id') userId: string) {
+    return this.projects.findAllByUserId(userId, pagination);
   }
 
   @ApiOperation({ summary: 'Get project detail' })

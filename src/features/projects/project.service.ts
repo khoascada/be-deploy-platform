@@ -22,11 +22,11 @@ export class ProjectService {
     private readonly github: GithubService,
   ) {}
 
-  async findAll(pagination: PaginationDto) {
+  async findAllByUserId(userId: string, pagination: PaginationDto) {
     const skip = (pagination.page - 1) * pagination.limit;
     const [items, total] = await Promise.all([
-      this.projects.findAll({ skip, take: pagination.limit }),
-      this.projects.count(),
+      this.projects.findAll({ skip, take: pagination.limit, userId }),
+      this.projects.count(userId),
     ]);
 
     return toProjectListResponseDto({
@@ -48,8 +48,8 @@ export class ProjectService {
     }
 
     if (project.ownerId !== userId) {
-      throw new ForbiddenError(
-        'You do not have access to this project',
+      throw new NotFoundError(
+        'Not found or not accessible',
         PROJECT_ERROR_CODE.NOT_ACCESS_TO_PROJECT,
       );
     }

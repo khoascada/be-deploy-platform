@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { Project } from '@prisma/client';
+import {
+  type DeployStatusDto,
+  LatestDeployDto,
+  toLatestDeployDto,
+} from './project-list-response.dto';
 
 const PROJECT_RUNNER_TYPE_VALUES = ['LOCAL', 'SSH'] as const;
 const PROJECT_STATUS_VALUES = ['ACTIVE', 'PAUSED', 'ARCHIVED'] as const;
@@ -83,8 +88,8 @@ export class ProjectDetailDto {
   @ApiProperty({ example: '123456789', nullable: true })
   webhookId!: string | null;
 
-  @ApiProperty({ example: 'encrypted-webhook-secret', nullable: true })
-  webhookSecretEncrypted!: string | null;
+  @ApiProperty({ type: LatestDeployDto, nullable: true })
+  latestDeploy!: LatestDeployDto | null;
 
   @ApiProperty({ example: 'ACTIVE', enum: PROJECT_STATUS_VALUES })
   status!: Project['status'];
@@ -96,7 +101,23 @@ export class ProjectDetailDto {
   updatedAt!: Date;
 }
 
-export function toProjectDetailDto(project: Project): ProjectDetailDto {
+type ProjectDetailWithDeployments = Project & {
+  deployments: Array<{
+    id: string;
+    status: DeployStatusDto;
+    commitSha: string | null;
+    commitMessage: string | null;
+    createdAt: Date;
+    finishedAt: Date | null;
+    trigger: 'MANUAL' | 'GITHUB_PUSH';
+  }>;
+};
+
+export function toProjectDetailDto(
+  project: ProjectDetailWithDeployments,
+): ProjectDetailDto {
+  const latestDeploy = project.deployments[0];
+
   return {
     id: project.id,
     ownerId: project.ownerId,
@@ -124,7 +145,7 @@ export function toProjectDetailDto(project: Project): ProjectDetailDto {
     imageName: project.imageName,
     autoDeploy: project.autoDeploy,
     webhookId: project.webhookId,
-    webhookSecretEncrypted: project.webhookSecretEncrypted,
+    latestDeploy: latestDeploy ? toLatestDeployDto(latestDeploy) : null,
     status: project.status,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
