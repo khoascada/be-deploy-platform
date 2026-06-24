@@ -34,7 +34,7 @@ $ npm install
 ## Local database with Docker
 
 1. Create `.env.development` from `.env.example`
-2. Start PostgreSQL:
+2. Start PostgreSQL and Redis from the root `compose.yaml`:
 
 ```bash
 $ npm run db:up
@@ -145,3 +145,4 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+

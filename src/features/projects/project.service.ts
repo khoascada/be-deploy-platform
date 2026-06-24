@@ -2,7 +2,6 @@ import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
 import type { PaginationDto } from '@/common/dto/pagination.dto';
 import {
   ConflictError,
-  ForbiddenError,
   NotFoundError,
 } from '@/common/exceptions/app.exceptions';
 import { Injectable } from '@nestjs/common';
@@ -168,7 +167,7 @@ function isSlugConflict(error: unknown): error is ConflictError {
 function withWebhookProvisionStatus<
   T extends { webhookId: string | null; webhookSecretEncrypted?: unknown },
 >(project: T) {
-  const { webhookSecretEncrypted: _webhookSecretEncrypted, ...rest } = project;
+  const { ...rest } = project;
 
   return {
     ...rest,

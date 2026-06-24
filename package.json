@@ -9,10 +9,10 @@
     "build": "nest build",
     "build:dev": "node scripts/with-node-env.cjs development nest build",
     "build:prod": "node scripts/with-node-env.cjs production nest build",
-    "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres",
-    "db:ps": "docker compose ps",
-    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose -f ../compose.yaml stop postgres redis redisinsight",
+    "db:logs": "docker compose -f ../compose.yaml logs -f postgres redis redisinsight",
+    "db:ps": "docker compose -f ../compose.yaml ps postgres redis redisinsight",
+    "db:up": "docker compose -f ../compose.yaml up -d postgres redis redisinsight",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -127,4 +127,5 @@
     }
   }
 }
+
 
