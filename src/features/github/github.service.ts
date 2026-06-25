@@ -602,12 +602,15 @@ export class GithubService {
   }
 
   private getWebhookUrl() {
+    const nodeEnv = this.config.get('NODE_ENV', { infer: true });
+    const backendUrl = this.config.get('BACKEND_URL', { infer: true });
     const ngrokUrl = this.config.get('NGROK_URL', { infer: true });
-    if (!ngrokUrl) {
-      throw new Error('NGROK_URL is not configured');
-    }
+    const webhookBaseUrl = nodeEnv === 'production' ? backendUrl : ngrokUrl ?? backendUrl;
 
-    return new URL('/api/v1/github/webhooks/repository', ngrokUrl).toString();
+    return new URL(
+      '/api/v1/github/webhooks/repository',
+      webhookBaseUrl,
+    ).toString();
   }
 }
 function isUniqueConstraintError(error: unknown): boolean {

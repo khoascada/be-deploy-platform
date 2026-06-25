@@ -1,0 +1,78 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Deploy backend on VPS
+        run: |
+          # Chuẩn bị SSH key để GitHub Actions SSH vào VPS
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+          # SSH vào VPS và truyền commit SHA hiện tại sang VPS
+          ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "DEPLOY_SHA='${{ github.sha }}' bash -s" <<'EOF'
+          set -euo pipefail
+
+          # Thư mục gốc chứa các repo trên VPS
+          APP_ROOT=/opt/mini-deploy
+          LOCK_FILE=/tmp/mini-deploy-cd.lock
+
+          # Sync repo về đúng commit vừa trigger workflow
+          sync_sha() {
+            repo_dir="$1"
+            sha="$2"
+            git -C "$APP_ROOT/$repo_dir" fetch --prune origin
+            git -C "$APP_ROOT/$repo_dir" checkout --force "$sha"
+          }
+
+          # Sync repo về branch mới nhất từ origin
+          sync_branch() {
+            repo_dir="$1"
+            branch="$2"
+            git -C "$APP_ROOT/$repo_dir" fetch --prune origin
+            git -C "$APP_ROOT/$repo_dir" checkout --force -B "$branch" "origin/$branch"
+          }
+
+          (
+            # Khóa deploy để tránh 2 tiến trình deploy đụng nhau trên VPS
+            flock -w 600 9
+
+            # Cập nhật source backend và infra
+            sync_sha be-deploy-platform "$DEPLOY_SHA"
+            sync_branch mini-deploy-infra main
+
+            # Vào repo infra chứa docker-compose.yml
+            cd "$APP_ROOT/mini-deploy-infra"
+
+            # Đảm bảo database và redis đang chạy trước khi migrate/start backend
+            docker compose up -d postgres redis
+
+            # Build lại Docker image backend từ source mới
+            docker compose build backend
+
+            # Chạy Prisma migration trên production database
+            docker compose run --rm backend npx prisma migrate deploy
+
+            # Restart container backend bằng image mới
+            docker compose up -d --no-deps backend
+
+            # In trạng thái container sau khi deploy
+            docker compose ps
+          ) 9>"$LOCK_FILE"
+          EOF
