@@ -1,3 +1,4 @@
+﻿import { USER_ERROR_CODE } from '@/common/constants';
 import type { PaginationDto } from '@/common/dto/pagination.dto';
 import { NotFoundError } from '@/common/exceptions/app.exceptions';
 import { Injectable } from '@nestjs/common';
@@ -26,19 +27,43 @@ export class UserService {
     };
   }
 
-  async findById(id: number) {
+  async findMe(id: string) {
     const user = await this.users.findById(id);
-    if (!user) throw new NotFoundError(`User not found`);
-    return toUserDetailDto(user);
+    if (!user) {
+      throw new NotFoundError('User not found', USER_ERROR_CODE.USER_NOT_FOUND);
+    }
+    return toUserDetailDto({
+      ...user,
+      githubConnection: {
+        isConnected: Boolean(user.githubConnection),
+        username: user.githubConnection?.username ?? null,
+        avatarUrl: user.githubConnection?.avatarUrl ?? null,
+      },
+    });
   }
 
-  async update(id: number, dto: UpdateUserDto) {
+  async findById(id: string) {
+    const user = await this.users.findById(id);
+    if (!user) {
+      throw new NotFoundError('User not found', USER_ERROR_CODE.USER_NOT_FOUND);
+    }
+    return toUserDetailDto({
+      ...user,
+      githubConnection: {
+        isConnected: Boolean(user.githubConnection),
+        username: user.githubConnection?.username ?? null,
+        avatarUrl: user.githubConnection?.avatarUrl ?? null,
+      },
+    });
+  }
+
+  async update(id: string, dto: UpdateUserDto) {
     await this.findById(id);
     const updated = await this.users.update(id, dto);
     return toUserDetailDto(updated);
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     await this.findById(id);
     await this.users.delete(id);
   }

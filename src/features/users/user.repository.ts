@@ -1,5 +1,6 @@
-import { PrismaService } from '@/prisma/prisma.service';
+﻿import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
+import type { Language, Theme } from '@prisma/client';
 
 @Injectable()
 export class UsersRepository {
@@ -17,9 +18,10 @@ export class UsersRepository {
     return this.prisma.user.count();
   }
 
-  findById(id: number) {
+  findById(id: string) {
     return this.prisma.user.findUnique({
       where: { id },
+      include: { githubConnection: true },
     });
   }
 
@@ -29,22 +31,22 @@ export class UsersRepository {
 
   create(data: {
     email: string;
-    password: string;
-    name?: string;
-    age?: number;
-    address?: string;
+    passwordHash: string;
+    name: string;
+    language: Language;
+    theme: Theme;
   }) {
     return this.prisma.user.create({ data });
   }
 
   update(
-    id: number,
-    data: { name?: string; email?: string; age?: number; address?: string },
+    id: string,
+    data: { name?: string; email?: string; avatarUrl?: string },
   ) {
     return this.prisma.user.update({ where: { id }, data });
   }
 
-  delete(id: number) {
+  delete(id: string) {
     return this.prisma.user.delete({ where: { id } });
   }
 }

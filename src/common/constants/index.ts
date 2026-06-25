@@ -1,10 +1,10 @@
-export const TOKEN_TTL = {
+﻿export const TOKEN_TTL = {
   ACCESS: 15 * 60,
   REFRESH: 7 * 24 * 3600,
 } as const;
 
 export const REDIS_KEY = {
-  refreshToken: (userId: number, jti: string) => `refresh:${userId}:${jti}`,
+  refreshToken: (userId: string, jti: string) => `refresh:${userId}:${jti}`,
   blacklist: (jti: string) => `blacklist:${jti}`,
 } as const;
 
@@ -20,8 +20,8 @@ export const AUTH = {
 export const BCRYPT = { SALT_ROUNDS: 10 } as const;
 
 export const RATE_LIMIT = {
-  GLOBAL: { windowMs: 15 * 60 * 1000, max: 100 },
-  AUTH: { windowMs: 15 * 60 * 1000, max: 10 },
+  GLOBAL: { windowMs: 15 * 60 * 1000, max: 1000 },
+  AUTH: { windowMs: 15 * 60 * 1000, max: 100 },
 } as const;
 
 export const PAGINATION = {
@@ -31,6 +31,13 @@ export const PAGINATION = {
 } as const;
 
 export const COOKIE = {
-  TOKEN: 'token',
-  MAX_AGE: 7 * 24 * 60 * 60 * 1000,
+  ACCESS_TOKEN: 'access_token',
+  REFRESH_TOKEN: 'refresh_token',
+  ACCESS_PATH: '/',
+  REFRESH_PATH: '/',
+  SAME_SITE: 'lax',
+  ACCESS_MAX_AGE: TOKEN_TTL.ACCESS * 1000,
+  REFRESH_MAX_AGE: TOKEN_TTL.REFRESH * 1000,
 } as const;
+
+export * from './error-codes';

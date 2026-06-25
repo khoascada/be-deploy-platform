@@ -2,7 +2,7 @@ import { ExecutionContext, createParamDecorator } from '@nestjs/common';
 
 // Shape của user sau khi JwtAuthGuard verify token và gắn vào req.user
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   role: string;
   jti: string; // JWT ID — dùng để blacklist token khi logout

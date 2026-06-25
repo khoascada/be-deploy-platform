@@ -9,17 +9,8 @@ erDiagram
 		String avatarUrl "nullable"
 		String passwordHash "nullable"
 		UserRole role
-		Boolean isGithubConnected
 		DateTime createdAt
 		DateTime updatedAt
-	}
-	RefreshToken {
-		String id PK
-		String userId FK
-		String tokenHash
-		DateTime expiresAt
-		DateTime revokedAt "nullable"
-		DateTime createdAt
 	}
 	GithubConnection {
 		String id PK
@@ -30,6 +21,8 @@ erDiagram
 		String avatarUrl "nullable"
 		String accessTokenEncrypted
 		String scopes "nullable"
+		GithubConnectionStatus status
+		DateTime revokedAt "nullable"
 		DateTime connectedAt
 		DateTime updatedAt
 	}
@@ -43,7 +36,8 @@ erDiagram
 		String repoName
 		String repoUrl
 		String githubRepoId "nullable"
-		String defaultBranch
+		String githubDefaultBranch
+		String deployBranch
 		String rootDirectory
 		String dockerfilePath
 		String buildContext
@@ -61,7 +55,6 @@ erDiagram
 		String webhookId "nullable"
 		String webhookSecretEncrypted "nullable"
 		ProjectStatus status
-		String lastDeploymentId FK "nullable"
 		DateTime createdAt
 		DateTime updatedAt
 	}
@@ -121,12 +114,10 @@ erDiagram
 		String errorMessage "nullable"
 	}
 	Deployment ||--}o DeploymentLog : logs
-	Project |o--|o Deployment : ProjectLastDeployment
 	Project |o--}o WebhookEvent : webhookEvents
 	Project ||--}o Deployment : ProjectDeployments
 	Project ||--}o DeploymentLog : logs
 	Project ||--}o EnvVar : envVars
 	User ||--|o GithubConnection : githubConnection
 	User ||--}o Project : projects
-	User ||--}o RefreshToken : refreshTokens
 ```

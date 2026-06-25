@@ -51,6 +51,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   get(key: string) {
     return this.client.get(key);
   }
+  // Lấy và xóa atomically các giá trị chỉ được dùng một lần như OAuth state.
+  getdel(key: string) {
+    return this.client.getdel(key);
+  }
 
   // Xóa key — dùng khi logout (xóa refresh token)
   del(key: string) {

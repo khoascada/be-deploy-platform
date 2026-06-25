@@ -2,9 +2,8 @@ import {
   AuthUser,
   CurrentUser,
 } from '@/common/decorators/current-user.decorator';
-import { Roles } from '@/common/decorators/roles.decorator';
+import { AdminOnly } from '@/common/decorators/admin-only.decorator';
 import { PaginationDto } from '@/common/dto/pagination.dto';
-import { RolesGuard } from '@/common/guards/roles.guard';
 import {
   Body,
   Controller,
@@ -13,34 +12,25 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Patch,
   Query,
-  UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserService } from './user.service';
 
-@ApiBearerAuth()
 @Controller('users')
 export class UserController {
   constructor(private readonly users: UserService) {}
 
   @Get('me')
   getMe(@CurrentUser() user: AuthUser) {
-    return this.users.findById(user.id);
+    return this.users.findMe(user.id);
   }
 
-  @ApiBearerAuth() // đính kèm AT vào request có decorator này
+  @AdminOnly()
   @Get()
   findAll(@Query() pagination: PaginationDto) {
     return this.users.findAll(pagination);
-  }
-
-  @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.users.findById(id);
   }
 
   @Patch('me')
@@ -48,11 +38,10 @@ export class UserController {
     return this.users.update(user.id, dto);
   }
 
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @AdminOnly()
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(@Param('id') id: string) {
     await this.users.remove(id);
   }
 }

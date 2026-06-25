@@ -1,0 +1,71 @@
+name: CI Backend
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    # GitHub cấp 1 máy Ubuntu tạm thời để chạy job này
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Chỉ cần quyền đọc source code
+      contents: read
+
+    defaults:
+      run:
+        # Mặc định mọi lệnh run sẽ đứng trong thư mục BE
+        # Đỡ phải viết cd BE ở từng step
+        working-directory: BE
+
+    steps:
+      # Lấy source code của repo về runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+        # Cài đúng version Node để chạy npm/prisma/build
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: BE/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run linter
+        run: npm run lint:check
+
+      # - name: Run unit tests
+      #   run: npm run test -- --runInBand
+      #   env:
+      #     NODE_ENV: test
+      #     DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deploy_platform?schema=public
+      #     REDIS_URL: redis://localhost:6379
+      #     JWT_SECRET: test-jwt-secret-123456
+      #     JWT_EXPIRES_IN: 7d
+      #     CORS_ORIGIN: http://localhost:2805
+      #     FRONTEND_URL: http://localhost:2805
+      #     BACKEND_URL: http://localhost:3000
+
+      - name: Build project
+        run: npm run build
+        env:
+          NODE_ENV: production
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deploy_platform?schema=public
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-123456
+          JWT_EXPIRES_IN: 7d
+          CORS_ORIGIN: http://localhost:2805
+          FRONTEND_URL: http://localhost:2805
+          BACKEND_URL: http://localhost:3000

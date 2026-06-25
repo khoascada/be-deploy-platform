@@ -4,6 +4,4 @@ import { z } from 'zod';
 export const updateUserSchema = z.object({
   name: z.string().min(AUTH.NAME_MIN_LENGTH).optional(),
   email: z.email().optional(),
-  age: z.number().int().positive().optional(),
-  address: z.string().optional(),
 });
