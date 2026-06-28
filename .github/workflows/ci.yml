@@ -20,8 +20,7 @@ jobs:
 
     defaults:
       run:
-        # Mặc định mọi lệnh run sẽ đứng trong thư mục BE
-        # Đỡ phải viết cd BE ở từng step
+        # Mặc định mọi lệnh run sẽ đứng ở root backend hiện tại
         working-directory: .
 
     steps:
@@ -31,11 +30,10 @@ jobs:
 
         # Cài đúng version Node để chạy npm/prisma/build
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
