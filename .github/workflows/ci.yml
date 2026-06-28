@@ -22,7 +22,7 @@ jobs:
       run:
         # Mặc định mọi lệnh run sẽ đứng trong thư mục BE
         # Đỡ phải viết cd BE ở từng step
-        working-directory: BE
+        working-directory: .
 
     steps:
       # Lấy source code của repo về runner
