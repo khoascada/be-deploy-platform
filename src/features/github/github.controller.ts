@@ -81,6 +81,8 @@ export class GithubController {
     @Headers('x-hub-signature-256') signature: string,
     @Body() payload: unknown,
   ) {
+    void signature;
+    void payload;
     console.log('GitHub webhook received:', {
       event,
       deliveryId,

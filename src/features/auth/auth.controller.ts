@@ -49,7 +49,8 @@ export class AuthController {
   ) {}
 
   private isSecureCookie() {
-    return this.config.get('NODE_ENV', { infer: true }) === 'production';
+    // return this.config.get('NODE_ENV', { infer: true }) === 'production';
+    return false;
   }
 
   @ApiOperation({ summary: 'Register new user' })
@@ -97,17 +98,25 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = getCookieValue(req, COOKIE.REFRESH_TOKEN);
-    if (!refreshToken) {
-      throw new UnauthorizedError(
-        'Refresh token cookie is missing',
-        AUTH_ERROR_CODE.REFRESH_TOKEN_MISSING,
-      );
-    }
+    try {
+      const refreshToken = getCookieValue(req, COOKIE.REFRESH_TOKEN);
+      if (!refreshToken) {
+        throw new UnauthorizedError(
+          'Refresh token cookie is missing',
+          AUTH_ERROR_CODE.REFRESH_TOKEN_MISSING,
+        );
+      }
 
-    const tokens = await this.auth.refresh(refreshToken);
-    setAuthCookies(res, tokens, this.isSecureCookie());
-    return { message: 'Token refreshed successfully' };
+      const tokens = await this.auth.refresh(refreshToken);
+      setAuthCookies(res, tokens, this.isSecureCookie());
+      return { message: 'Token refreshed successfully' };
+    } catch (error) {
+      // bị 401 thì clear cookie
+      if (error instanceof UnauthorizedError) {
+        clearAuthCookies(res, this.isSecureCookie());
+      }
+      throw error;
+    }
   }
 
   @ApiOperation({ summary: 'Logout' })
