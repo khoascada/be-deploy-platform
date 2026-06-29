@@ -1,8 +1,9 @@
 import { RATE_LIMIT } from '@/common/constants';
-import { ConfigModule } from '@/config/config.module';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CsrfOriginGuard } from '@/common/guards/csrf-origin.guard';
+import { ConfigModule } from '@/config/config.module';
 import { AuthModule } from '@/features/auth/auth.module';
+import { DeploymentModule } from '@/features/deployments/deployment.module';
 import { GithubModule } from '@/features/github/github.module';
 import { ProjectModule } from '@/features/projects/project.module';
 import { UserModule } from '@/features/users/user.module';
@@ -22,6 +23,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     AuthModule,
     GithubModule,
     ProjectModule,
+    DeploymentModule,
     UserModule,
     ThrottlerModule.forRoot([
       {

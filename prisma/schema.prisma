@@ -174,11 +174,6 @@ model Project {
   // Phase 1 dùng SSH: chạy command qua VPS khác
   runnerType RunnerType @default(LOCAL)
 
-  // Đường dẫn repo được clone trên VPS
-  // Phase 0.5 dùng field này
-  // Ví dụ: "/var/mini-deploy/apps/wordy"
-  localRepoPath String?
-
   // Phase 1 dùng sau
   sshHost String?
   sshPort Int?    @default(22)

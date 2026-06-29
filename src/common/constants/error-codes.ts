@@ -32,6 +32,15 @@ export const GITHUB_ERROR_CODE = {
 
 export const PROJECT_ERROR_CODE = {
   NOT_ACCESS_TO_PROJECT: 'NOT_ACCESS_TO_PROJECT',
+  PROJECT_NOT_FOUND: 'PROJECT_NOT_FOUND',
+} as const;
+
+export const DEPLOYMENT_ERROR_CODE = {
+  PROJECT_NOT_DEPLOYABLE: 'PROJECT_NOT_DEPLOYABLE',
+  PROJECT_NOT_ACTIVE: 'PROJECT_NOT_ACTIVE',
+  PROJECT_RUNNER_NOT_SUPPORTED: 'PROJECT_RUNNER_NOT_SUPPORTED',
+  PROJECT_DEPLOY_CONFIG_MISSING: 'PROJECT_DEPLOY_CONFIG_MISSING',
+  ACTIVE_DEPLOYMENT_EXISTS: 'ACTIVE_DEPLOYMENT_EXISTS',
 } as const;
 
 export type CommonErrorCode =
@@ -44,10 +53,13 @@ export type GithubErrorCode =
   (typeof GITHUB_ERROR_CODE)[keyof typeof GITHUB_ERROR_CODE];
 export type ProjectErrorCode =
   (typeof PROJECT_ERROR_CODE)[keyof typeof PROJECT_ERROR_CODE];
+export type DeploymentErrorCode =
+  (typeof DEPLOYMENT_ERROR_CODE)[keyof typeof DEPLOYMENT_ERROR_CODE];
 
 export type ErrorCode =
   | CommonErrorCode
   | AuthErrorCode
   | UserErrorCode
   | GithubErrorCode
-  | ProjectErrorCode;
+  | ProjectErrorCode
+  | DeploymentErrorCode;

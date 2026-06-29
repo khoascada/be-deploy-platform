@@ -55,8 +55,6 @@ export class ProjectDetailDto {
   @ApiProperty({ example: 'LOCAL', enum: PROJECT_RUNNER_TYPE_VALUES })
   runnerType!: Project['runnerType'];
 
-  @ApiProperty({ example: '/var/mini-deploy/apps/my-app', nullable: true })
-  localRepoPath!: string | null;
 
   @ApiProperty({ example: '10.0.0.1', nullable: true })
   sshHost!: string | null;
@@ -134,7 +132,6 @@ export function toProjectDetailDto(
     dockerfilePath: project.dockerfilePath,
     buildContext: project.buildContext,
     runnerType: project.runnerType,
-    localRepoPath: project.localRepoPath,
     sshHost: project.sshHost,
     sshPort: project.sshPort,
     sshUser: project.sshUser,
