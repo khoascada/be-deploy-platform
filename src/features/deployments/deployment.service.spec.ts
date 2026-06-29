@@ -1,11 +1,14 @@
-import { COMMON_ERROR_CODE, DEPLOYMENT_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
+﻿import {
+  COMMON_ERROR_CODE,
+  DEPLOYMENT_ERROR_CODE,
+  PROJECT_ERROR_CODE,
+} from '@/common/constants';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
 } from '@/common/exceptions/app.exceptions';
 import type { Project } from '@prisma/client';
-import { DeploymentRepository } from './deployment.repository';
 import { DeploymentService } from './deployment.service';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -25,7 +28,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     dockerfilePath: 'Dockerfile',
     buildContext: '.',
     runnerType: 'LOCAL',
-    localRepoPath: '/var/mini-deploy/apps/my-app',
     sshHost: null,
     sshPort: 22,
     sshUser: null,
@@ -51,11 +53,17 @@ describe('DeploymentService', () => {
 
   const deployments = {
     createManualDeployment: jest.fn(),
+    markEnqueueFailed: jest.fn(),
+  };
+
+  const deploymentQueue = {
+    enqueue: jest.fn(),
   };
 
   const service = new DeploymentService(
     projects as never,
     deployments as never,
+    deploymentQueue as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -75,6 +83,7 @@ describe('DeploymentService', () => {
 
     projects.findById.mockResolvedValue(project);
     deployments.createManualDeployment.mockResolvedValue(deployment);
+    deploymentQueue.enqueue.mockResolvedValue(undefined);
 
     await expect(
       service.createManualDeployment('user-123', 'project-123'),
@@ -93,6 +102,7 @@ describe('DeploymentService', () => {
       'project-123',
       'main',
     );
+    expect(deploymentQueue.enqueue).toHaveBeenCalledWith('deployment-1');
   });
 
   it('throws not found when the project does not exist', async () => {
@@ -147,14 +157,14 @@ describe('DeploymentService', () => {
   });
 
   it('throws a deployment error when required deploy config is missing', async () => {
-    projects.findById.mockResolvedValue(makeProject({ localRepoPath: null }));
+    projects.findById.mockResolvedValue(makeProject({ containerName: null }));
 
     await expect(
       service.createManualDeployment('user-123', 'project-123'),
     ).rejects.toMatchObject(
       new ValidationError(
         'Project deploy configuration is incomplete',
-        { missingFields: ['localRepoPath'] },
+        { missingFields: ['containerName'] },
         DEPLOYMENT_ERROR_CODE.PROJECT_DEPLOY_CONFIG_MISSING,
       ),
     );

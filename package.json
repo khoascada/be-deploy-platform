@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "nestjs-project",
   "version": "0.0.1",
   "description": "",
@@ -20,6 +20,8 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main.js",
     "start:prod:env": "node scripts/with-node-env.cjs production node dist/src/main.js",
+    "start:worker": "node dist/src/worker/main.js",
+    "start:worker:env": "node scripts/with-node-env.cjs production node dist/src/worker/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
@@ -42,6 +44,7 @@
     "build": "Build app; dev/prod variants ep NODE_ENV cho dung env file.",
     "db:*": "Quan ly Postgres local bang Docker Compose.",
     "start:*": "Chay NestJS o che do thuong, watch, debug, hoac production.",
+    "start:worker*": "Chay deployment worker entrypoint doc lap sau khi build.",
     "test:*": "Chay unit test, watch test, coverage, va debug test.",
     "prisma:erd*": "Sinh so do ERD tu Prisma schema.",
     "prisma:generate*": "Sinh lai Prisma Client/types theo schema.prisma.",
@@ -61,6 +64,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.79.2",
     "helmet": "^8.1.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
@@ -71,10 +75,10 @@
     "pg": "^8.21.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "prisma": "^7.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "zod": "^4.4.3",
-    "prisma": "^7.8.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

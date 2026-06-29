@@ -1,4 +1,4 @@
-import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
+﻿import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { DeploymentRepository } from './deployment.repository';
 
@@ -58,7 +58,7 @@ class FakeTransaction {
   }
 
   deployment = {
-    findFirst: async (args: {
+    findFirst: (args: {
       where?: {
         projectId?: string;
         status?: { in: FakeDeployment['status'][] };
@@ -85,9 +85,9 @@ class FakeTransaction {
         items.sort((left, right) => left.deploymentNumber - right.deploymentNumber);
       }
 
-      return items[0] ?? null;
+      return Promise.resolve(items[0] ?? null);
     },
-    create: async (args: {
+    create: (args: {
       data: Omit<FakeDeployment, 'id' | 'createdAt'>;
     }) => {
       const deployment: FakeDeployment = {
@@ -96,7 +96,7 @@ class FakeTransaction {
         ...args.data,
       };
       this.prisma.deployments.push(deployment);
-      return deployment;
+      return Promise.resolve(deployment);
     },
   };
 }

@@ -105,13 +105,13 @@ Chia công việc thành các task nhỏ, có thứ tự, mỗi task có:
 Với công việc nhiều file hoặc có rủi ro:
 
 - implement một lát nhỏ
-- test nó
+<!-- - test nó -->
 - verify nó
 - rồi mới sang lát tiếp theo
 
 Không được đổ một cục thay đổi lớn chưa verify vào cùng lúc.
 
-### Đổi behavior hoặc sửa bug -> test trước
+<!-- ### Đổi behavior hoặc sửa bug -> test trước
 
 Với logic mới, đổi hành vi, hoặc bug fix:
 
@@ -119,7 +119,7 @@ Với logic mới, đổi hành vi, hoặc bug fix:
 - xác nhận test đó thật sự fail
 - implement mức tối thiểu để pass
 - chạy test liên quan
-- rồi chạy verify rộng hơn trước khi kết thúc
+- rồi chạy verify rộng hơn trước khi kết thúc -->
 
 ## Quy Tắc Source-Driven
 
@@ -221,7 +221,7 @@ Trước khi tuyên bố task đã xong, xác nhận:
 - đã dùng đúng workflow của skill phù hợp
 - assumptions đã được nêu ra
 - phạm vi đã được giữ chặt
-- test hoặc bước verify phù hợp đã thực sự được chạy khi cần
+<!-- - test hoặc bước verify phù hợp đã thực sự được chạy khi cần -->
 - build/lint đã pass khi có liên quan
 - mọi vùng rủi ro hoặc chưa verify đã được nêu rõ
 

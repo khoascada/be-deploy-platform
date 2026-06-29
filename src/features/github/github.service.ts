@@ -1,4 +1,4 @@
-import { GITHUB_ERROR_CODE } from '@/common/constants';
+﻿import { GITHUB_ERROR_CODE } from '@/common/constants';
 import {
   BadRequestError,
   ConflictError,
@@ -286,6 +286,10 @@ export class GithubService {
     return response;
   }
 
+  async getAccessTokenForUser(userId: string): Promise<string> {
+    return this.getGithubAccessToken(userId);
+  }
+
   private async consumeOAuthState(state: string) {
     const value = await this.redis.getdel('oauth:github:state:' + state);
     if (!value) {
@@ -370,7 +374,7 @@ export class GithubService {
     return profile.data;
   }
 
-  private async getGithubAccessToken(userId: string) {
+  private async getGithubAccessToken(userId: string): Promise<string> {
     const githubConnection = await this.githubConnections.findByUserId(userId);
 
     if (!githubConnection) {
@@ -621,3 +625,6 @@ function isUniqueConstraintError(error: unknown): boolean {
     error.code === 'P2002'
   );
 }
+
+
+

@@ -1,11 +1,12 @@
-import { DEPLOYMENT_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
+﻿import { DEPLOYMENT_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
 import {
   NotFoundError,
   ValidationError,
 } from '@/common/exceptions/app.exceptions';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Project } from '@prisma/client';
 import { ProjectRepository } from '../projects/project.repository';
+import { DeploymentQueueService } from './deployment-queue.service';
 import { DeploymentRepository } from './deployment.repository';
 import {
   type DeploymentResponseDto,
@@ -22,9 +23,12 @@ const REQUIRED_DEPLOY_STRING_FIELDS = [
 
 @Injectable()
 export class DeploymentService {
+  private readonly logger = new Logger(DeploymentService.name);
+
   constructor(
     private readonly projects: ProjectRepository,
     private readonly deployments: DeploymentRepository,
+    private readonly deploymentQueue: DeploymentQueueService,
   ) {}
 
   async createManualDeployment(
@@ -77,6 +81,15 @@ export class DeploymentService {
       project.deployBranch,
     );
 
+    try {
+      await this.deploymentQueue.enqueue(deployment.id);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      this.logger.error(`Failed to enqueue deployment ${deployment.id}: ${message}`);
+      await this.deployments.markEnqueueFailed(deployment.id, message);
+      throw error;
+    }
+
     return toDeploymentResponseDto(deployment);
   }
 }
@@ -98,6 +111,10 @@ function findMissingDeployConfigFields(project: Project) {
   if (project.containerPort === null || project.containerPort === undefined) {
     missingFields.push('containerPort');
   }
-  console.log('missingFields', missingFields);
+
   return missingFields;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Failed to enqueue deployment job';
 }
