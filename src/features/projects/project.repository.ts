@@ -8,6 +8,7 @@ const HOST_PORT_CONFLICT_MESSAGE = 'Host port already exists';
 const GITHUB_REPO_CONFLICT_MESSAGE =
   'GitHub repository already exists for this user';
 const PROJECT_SLUG_CONFLICT_MESSAGE = 'Project slug already exists';
+const CONTAINER_NAME_CONFLICT_MESSAGE = 'Container name already exists';
 
 @Injectable()
 export class ProjectRepository {
@@ -17,12 +18,12 @@ export class ProjectRepository {
     return this.prisma.project.findUnique({
       where: { id },
       include: {
-        deployments: true
-      }
+        deployments: true,
+      },
     });
   }
 
-  findAll(args: { skip: number; take: number, userId: string }) {
+  findAll(args: { skip: number; take: number; userId: string }) {
     return this.prisma.project.findMany({
       skip: args.skip,
       take: args.take,
@@ -56,16 +57,16 @@ export class ProjectRepository {
         },
       },
       where: {
-        ownerId: args.userId
-      }
+        ownerId: args.userId,
+      },
     });
   }
 
   count(userId: string) {
     return this.prisma.project.count({
       where: {
-        ownerId: userId
-      }
+        ownerId: userId,
+      },
     });
   }
 
@@ -80,6 +81,23 @@ export class ProjectRepository {
     });
 
     return items.map((item) => item.slug);
+  }
+
+  async findContainerNamesByBase(baseName: string) {
+    const items = await this.prisma.project.findMany({
+      where: {
+        OR: [
+          { containerName: baseName },
+          { containerName: { startsWith: `${baseName}-` } },
+        ],
+      },
+      select: { containerName: true },
+      orderBy: { containerName: 'asc' },
+    });
+
+    return items
+      .map((item) => item.containerName)
+      .filter((item): item is string => typeof item === 'string');
   }
 
   async updateWebhookConfig(
@@ -116,6 +134,13 @@ export class ProjectRepository {
       if (includesAllTargets(uniqueTargets, ['ownerId', 'slug'])) {
         throw new ConflictError(
           PROJECT_SLUG_CONFLICT_MESSAGE,
+          COMMON_ERROR_CODE.CONFLICT,
+        );
+      }
+
+      if (includesAllTargets(uniqueTargets, ['containerName'])) {
+        throw new ConflictError(
+          CONTAINER_NAME_CONFLICT_MESSAGE,
           COMMON_ERROR_CODE.CONFLICT,
         );
       }

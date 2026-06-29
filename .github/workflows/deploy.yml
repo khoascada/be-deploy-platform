@@ -54,7 +54,7 @@ jobs:
             flock -w 600 9
 
             # Cập nhật source backend và infra
-            sync_sha be-deploy-platform "$DEPLOY_SHA"
+            sync_sha be "$DEPLOY_SHA"
             sync_branch mini-deploy-infra main
 
             # Vào repo infra chứa docker-compose.yml
