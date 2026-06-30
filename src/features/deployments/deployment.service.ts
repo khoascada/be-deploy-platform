@@ -81,11 +81,14 @@ export class DeploymentService {
       project.deployBranch,
     );
 
+    // đưa vào queue
     try {
       await this.deploymentQueue.enqueue(deployment.id);
     } catch (error) {
       const message = getErrorMessage(error);
-      this.logger.error(`Failed to enqueue deployment ${deployment.id}: ${message}`);
+      this.logger.error(
+        `Failed to enqueue deployment ${deployment.id}: ${message}`,
+      );
       await this.deployments.markEnqueueFailed(deployment.id, message);
       throw error;
     }
@@ -116,5 +119,7 @@ function findMissingDeployConfigFields(project: Project) {
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Failed to enqueue deployment job';
+  return error instanceof Error
+    ? error.message
+    : 'Failed to enqueue deployment job';
 }

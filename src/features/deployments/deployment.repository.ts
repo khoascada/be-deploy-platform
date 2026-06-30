@@ -71,6 +71,7 @@ export class DeploymentRepository {
     });
   }
 
+  // check deployment, update and return
   async claimQueuedDeployment(
     deploymentId: string,
   ): Promise<DeploymentExecutionContext | null> {
@@ -84,6 +85,7 @@ export class DeploymentRepository {
         return null;
       }
 
+      // tránh 2 worker chạy cùng project
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext(${deploymentIdentity.projectId}))
       `;
@@ -106,6 +108,7 @@ export class DeploymentRepository {
       }
 
       const startedAt = new Date();
+      // update status, start, err message
       const updated = await tx.deployment.updateMany({
         where: {
           id: deploymentId,

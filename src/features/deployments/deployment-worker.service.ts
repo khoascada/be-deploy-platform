@@ -3,9 +3,9 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { DEPLOYMENT_QUEUE_NAME } from './deployment.constants';
-import { createBullMqConnection } from './deployment-queue.service';
 import { DeploymentExecutorService } from './deployment-executor.service';
+import { createBullMqConnection } from './deployment-queue.service';
+import { DEPLOYMENT_QUEUE_NAME } from './deployment.constants';
 import type { DeploymentJobData } from './deployment.types';
 
 @Injectable()

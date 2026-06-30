@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import type { DeploymentCommandResult } from './deployment.types';
 
+// 
 export interface RunCommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -18,8 +19,17 @@ export class DeploymentCommandError extends Error {
   }
 }
 
+/* 
+ Chạy command thật = child_process.spawn
+ hứng stdout/stderr
+ callback từng dòng log ra ngoài
+ trả kết quả stdout/stderr/exitCode
+ nếu command fail thì throw DeploymentCommandError
+ */
+
 @Injectable()
 export class DeploymentCommandRunnerService {
+  
   async run(
     command: string,
     args: string[],

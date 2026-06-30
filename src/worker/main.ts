@@ -4,10 +4,12 @@ import { NestFactory } from '@nestjs/core';
 import { WorkerAppModule } from './worker.module';
 
 async function bootstrap() {
+  // ko dùng create mà dùng createApp... là ko mở HTTP Server, chỉ tạo DI Container
   const app = await NestFactory.createApplicationContext(WorkerAppModule, {
     bufferLogs: true,
   });
   const logger = new Logger('DeploymentWorkerBootstrap');
+  // lấy worker service từ Nest DI
   const worker = app.get(DeploymentWorkerService);
 
   await worker.start();
@@ -19,9 +21,12 @@ async function bootstrap() {
     process.exit(0);
   };
 
+  // lắng nghe khi b bấm Ctrl + C -> shutdown
   process.on('SIGINT', () => {
     void shutdown('SIGINT');
   });
+
+  // Lắng nghe khi shutdown từ Docker, pm2, ...
   process.on('SIGTERM', () => {
     void shutdown('SIGTERM');
   });
