@@ -21,8 +21,7 @@ export class DeploymentExecutorService {
   // Hàm thực thi worker
   async execute(deploymentId: string) {
     const context = await this.deployments.claimQueuedDeployment(deploymentId);
-    console.log("LOOOOOOOOOOOOO")
-    console.log("🚀 ~ DeploymentExecutorService ~ execute ~ context:", context)
+
 
     if (!context) {
       this.logger.warn(

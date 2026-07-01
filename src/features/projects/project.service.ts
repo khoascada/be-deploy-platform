@@ -138,13 +138,13 @@ export class ProjectService {
 
       throw new ConflictError(
         CONTAINER_NAME_CONFLICT_MESSAGE,
-        COMMON_ERROR_CODE.CONFLICT,
+        PROJECT_ERROR_CODE.CONTAINER_NAME_ALREADY_EXISTS,
       );
     }
 
     throw new ConflictError(
       PROJECT_SLUG_CONFLICT_MESSAGE,
-      COMMON_ERROR_CODE.CONFLICT,
+      PROJECT_ERROR_CODE.PROJECT_SLUG_ALREADY_EXISTS,
     );
   }
 
@@ -210,16 +210,22 @@ export class ProjectService {
 }
 
 function isSlugConflict(error: unknown): error is ConflictError {
-  return isConflictWithMessage(error, PROJECT_SLUG_CONFLICT_MESSAGE);
+  return isConflictWithCode(
+    error,
+    PROJECT_ERROR_CODE.PROJECT_SLUG_ALREADY_EXISTS,
+  );
 }
 
 function isContainerNameConflict(error: unknown): error is ConflictError {
-  return isConflictWithMessage(error, CONTAINER_NAME_CONFLICT_MESSAGE);
+  return isConflictWithCode(
+    error,
+    PROJECT_ERROR_CODE.CONTAINER_NAME_ALREADY_EXISTS,
+  );
 }
 
-function isConflictWithMessage(
+function isConflictWithCode(
   error: unknown,
-  expectedMessage: string,
+  expectedCode: string,
 ): error is ConflictError {
   if (!(error instanceof ConflictError)) {
     return false;
@@ -229,8 +235,8 @@ function isConflictWithMessage(
   return (
     typeof response === 'object' &&
     response !== null &&
-    'message' in response &&
-    response.message === expectedMessage
+    'code' in response &&
+    response.code === expectedCode
   );
 }
 

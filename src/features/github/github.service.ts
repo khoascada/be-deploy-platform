@@ -50,6 +50,14 @@ type CallbackFailureReason =
   | 'oauth_configuration_error'
   | 'connection_failed';
 
+export interface GithubDeploymentAuthContext {
+  accessToken: string;
+  grantedScopes: string[];
+  grantedScopeRaw: string | null;
+  requestedScopes: string[];
+  requestedScopeRaw: string | null;
+}
+
 class GithubCallbackError extends Error {
   constructor(readonly reason: CallbackFailureReason) {
     super(reason);
@@ -286,8 +294,44 @@ export class GithubService {
     return response;
   }
 
+  // gom toàn bộ info github auth mà deploy cần
+  async getDeploymentAuthContext(
+    userId: string,
+  ): Promise<GithubDeploymentAuthContext> {
+    const githubConnection = await this.githubConnections.findByUserId(userId);
+
+    if (!githubConnection) {
+      throw new ConflictError(
+        'User has not connected GitHub yet',
+        GITHUB_ERROR_CODE.NOT_CONNECTED_GITHUB_YET,
+      );
+    }
+
+    const encryptionKey = this.config.get('GITHUB_TOKEN_ENCRYPTION_KEY', {
+      infer: true,
+    });
+    if (!encryptionKey) {
+      throw new Error('GitHub token encryption key is not configured');
+    }
+
+    const requestedScopeRaw =
+      this.config.get('GITHUB_OAUTH_SCOPE', { infer: true }) ?? null;
+
+    return {
+      accessToken: decryptGithubToken(
+        githubConnection.accessTokenEncrypted,
+        encryptionKey,
+      ),
+      grantedScopes: this.parseScopes(githubConnection.scopes),
+      grantedScopeRaw: githubConnection.scopes,
+      requestedScopes: this.parseScopes(requestedScopeRaw),
+      requestedScopeRaw,
+    };
+  }
+
   async getAccessTokenForUser(userId: string): Promise<string> {
-    return this.getGithubAccessToken(userId);
+    const authContext = await this.getDeploymentAuthContext(userId);
+    return authContext.accessToken;
   }
 
   private async consumeOAuthState(state: string) {
@@ -475,6 +519,17 @@ export class GithubService {
     return branches;
   }
 
+  private parseScopes(scopeValue: string | null | undefined) {
+    if (!scopeValue) {
+      return [];
+    }
+
+    return scopeValue
+      .split(/[\s,]+/)
+      .map((scope) => scope.trim())
+      .filter((scope) => scope.length > 0);
+  }
+
   private getGithubHeaders(accessToken: string) {
     return {
       Accept: 'application/vnd.github+json',
@@ -609,7 +664,8 @@ export class GithubService {
     const nodeEnv = this.config.get('NODE_ENV', { infer: true });
     const backendUrl = this.config.get('BACKEND_URL', { infer: true });
     const ngrokUrl = this.config.get('NGROK_URL', { infer: true });
-    const webhookBaseUrl = nodeEnv === 'production' ? backendUrl : ngrokUrl ?? backendUrl;
+    const webhookBaseUrl =
+      nodeEnv === 'production' ? backendUrl : (ngrokUrl ?? backendUrl);
 
     return new URL(
       '/api/v1/github/webhooks/repository',
@@ -625,6 +681,3 @@ function isUniqueConstraintError(error: unknown): boolean {
     error.code === 'P2002'
   );
 }
-
-
-

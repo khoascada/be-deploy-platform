@@ -1,9 +1,8 @@
-import { Logger } from '@nestjs/common';
+﻿import { Logger } from '@nestjs/common';
 import { LogLevel, LogStream } from '@prisma/client';
 import { DeploymentRepository } from './deployment.repository';
 import type { DeploymentExecutionContext } from './deployment.types';
 
-// ghi log của 1 deployment vào DB theo đúng thứ tự
 export class DeploymentLogWriter {
   private readonly logger = new Logger(DeploymentLogWriter.name);
   private nextSeq = 1;
@@ -23,7 +22,7 @@ export class DeploymentLogWriter {
   }
 
   stderr(message: string) {
-    return this.append(LogStream.STDERR, LogLevel.ERROR, message);
+    return this.append(LogStream.STDERR, LogLevel.INFO, message);
   }
 
   error(message: string) {
@@ -34,12 +33,13 @@ export class DeploymentLogWriter {
     await this.queue;
   }
 
-  // thêm 1 dòng log vào DB
   private append(stream: LogStream, level: LogLevel, message: string) {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) {
       return Promise.resolve();
     }
+
+    this.writeToTerminal(stream, level, trimmedMessage);
 
     const seq = this.nextSeq;
     this.nextSeq += 1;
@@ -60,6 +60,18 @@ export class DeploymentLogWriter {
       });
 
     return this.queue;
+  }
+
+  private writeToTerminal(stream: LogStream, level: LogLevel, message: string) {
+    const prefix = `[deploy #${this.context.deploymentNumber} ${this.context.project.slug}] [${stream}]`;
+    const formattedMessage = `${prefix} ${message}`;
+
+    if (level === LogLevel.ERROR) {
+      this.logger.error(formattedMessage);
+      return;
+    }
+
+    this.logger.log(formattedMessage);
   }
 }
 

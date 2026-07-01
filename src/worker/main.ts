@@ -5,9 +5,7 @@ import { WorkerAppModule } from './worker.module';
 
 async function bootstrap() {
   // ko dùng create mà dùng createApp... là ko mở HTTP Server, chỉ tạo DI Container
-  const app = await NestFactory.createApplicationContext(WorkerAppModule, {
-    bufferLogs: true,
-  });
+  const app = await NestFactory.createApplicationContext(WorkerAppModule);
   const logger = new Logger('DeploymentWorkerBootstrap');
   // lấy worker service từ Nest DI
   const worker = app.get(DeploymentWorkerService);

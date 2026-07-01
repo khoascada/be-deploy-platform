@@ -1,4 +1,4 @@
-import { COMMON_ERROR_CODE } from '@/common/constants';
+import { PROJECT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
@@ -116,32 +116,38 @@ export class ProjectRepository {
       return await this.prisma.project.create({ data });
     } catch (error) {
       const uniqueTargets = getUniqueTargets(error);
+      console.log(
+        '🚀 ~ ProjectRepository ~ create ~ uniqueTargets:',
+        error,
+        'halo',
+        uniqueTargets,
+      );
 
       if (includesAllTargets(uniqueTargets, ['hostPort'])) {
         throw new ConflictError(
           HOST_PORT_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.HOST_PORT_ALREADY_EXISTS,
         );
       }
 
       if (includesAllTargets(uniqueTargets, ['ownerId', 'githubRepoId'])) {
         throw new ConflictError(
           GITHUB_REPO_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.GITHUB_REPO_ALREADY_EXISTS,
         );
       }
 
       if (includesAllTargets(uniqueTargets, ['ownerId', 'slug'])) {
         throw new ConflictError(
           PROJECT_SLUG_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.PROJECT_SLUG_ALREADY_EXISTS,
         );
       }
 
       if (includesAllTargets(uniqueTargets, ['containerName'])) {
         throw new ConflictError(
           CONTAINER_NAME_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.CONTAINER_NAME_ALREADY_EXISTS,
         );
       }
 
@@ -155,14 +161,35 @@ function getUniqueTargets(error: unknown) {
     typeof error !== 'object' ||
     error === null ||
     !('code' in error) ||
-    error.code !== 'P2002' ||
-    !('meta' in error)
+    error.code !== 'P2002'
   ) {
     return [] as string[];
   }
 
-  const target = (error.meta as { target?: unknown }).target;
-  return Array.isArray(target) ? target.filter(isString) : [];
+  if ('meta' in error) {
+    const target = (error.meta as { target?: unknown }).target;
+    if (Array.isArray(target)) {
+      return target.filter(isString);
+    }
+  }
+
+  if ('message' in error && typeof error.message === 'string') {
+    const match = /Unique constraint failed on the fields?: \((.+)\)/.exec(
+      error.message,
+    );
+
+    if (!match) {
+      return [] as string[];
+    }
+
+    return match[1]
+      .split(',')
+      .map((item) => item.trim())
+      .map((item) => item.replace(/^[`"'(]+|[`"')]+$/g, ''))
+      .filter(isString);
+  }
+
+  return [] as string[];
 }
 
 function includesAllTargets(targets: string[], expected: string[]) {
