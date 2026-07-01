@@ -1,16 +1,17 @@
-﻿import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
+import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { DeploymentStatus, DeploymentTrigger } from '@prisma/client';
-import { ACTIVE_DEPLOYMENT_STATUSES } from './deployment.constants';
+import { ACTIVE_DEPLOYMENT_STATUSES } from '@/features/deployments/shared/deployment.constants';
 import type {
   DeploymentExecutionContext,
   DeploymentFailureInput,
   DeploymentLogInput,
+  DeploymentLogRecord,
   DeploymentResolvedCommitInput,
   DeploymentSuccessInput,
-} from './deployment.types';
+} from '@/features/deployments/shared/deployment.types';
 
 @Injectable()
 export class DeploymentRepository {
@@ -71,7 +72,6 @@ export class DeploymentRepository {
     });
   }
 
-  // check deployment, update and return
   async claimQueuedDeployment(
     deploymentId: string,
   ): Promise<DeploymentExecutionContext | null> {
@@ -85,7 +85,6 @@ export class DeploymentRepository {
         return null;
       }
 
-      // tránh 2 worker chạy cùng project
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext(${deploymentIdentity.projectId}))
       `;
@@ -108,7 +107,6 @@ export class DeploymentRepository {
       }
 
       const startedAt = new Date();
-      // update status, start, err message
       const updated = await tx.deployment.updateMany({
         where: {
           id: deploymentId,
@@ -177,7 +175,29 @@ export class DeploymentRepository {
     });
   }
 
-  appendLog(data: DeploymentLogInput) {
+  findById(deploymentId: string) {
+    return this.prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      include: {
+        project: {
+          select: {
+            id: true,
+            ownerId: true,
+            slug: true,
+          },
+        },
+      },
+    });
+  }
+
+  findLogs(deploymentId: string) {
+    return this.prisma.deploymentLog.findMany({
+      where: { deploymentId },
+      orderBy: { seq: 'asc' },
+    });
+  }
+
+  appendLog(data: DeploymentLogInput): Promise<DeploymentLogRecord> {
     return this.prisma.deploymentLog.create({
       data,
     });

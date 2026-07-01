@@ -1,7 +1,7 @@
-﻿import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { LogLevel, LogStream } from '@prisma/client';
-import { DeploymentLogWriter } from './deployment-log-writer';
-import type { DeploymentExecutionContext } from './deployment.types';
+import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
+import type { DeploymentExecutionContext } from '@/features/deployments/shared/deployment.types';
 
 function makeContext(): DeploymentExecutionContext {
   const now = new Date('2026-07-01T10:00:00.000Z');

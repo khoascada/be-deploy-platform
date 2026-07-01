@@ -1,4 +1,4 @@
-﻿import type { EnvVars } from '@/config/env.validation';
+import type { EnvVars } from '@/config/env.validation';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'node:fs';
@@ -6,17 +6,17 @@ import * as path from 'node:path';
 import {
   type GithubDeploymentAuthContext,
   GithubService,
-} from '../github/github.service';
+} from '@/features/github/github.service';
 import {
   DeploymentCommandError,
   DeploymentCommandRunnerService,
-} from './deployment-command-runner.service';
-import { DeploymentLogWriter } from './deployment-log-writer';
-import { DeploymentRepository } from './deployment.repository';
+} from '@/features/deployments/worker/deployment-command-runner.service';
+import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import type {
   DeploymentExecutionContext,
   DeploymentResolvedCommitInput,
-} from './deployment.types';
+} from '@/features/deployments/shared/deployment.types';
 
 @Injectable()
 export class DeploymentSourceService {

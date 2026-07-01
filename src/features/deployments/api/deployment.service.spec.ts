@@ -1,4 +1,4 @@
-﻿import {
+import {
   COMMON_ERROR_CODE,
   DEPLOYMENT_ERROR_CODE,
   PROJECT_ERROR_CODE,
@@ -9,7 +9,7 @@ import {
   ValidationError,
 } from '@/common/exceptions/app.exceptions';
 import type { Project } from '@prisma/client';
-import { DeploymentService } from './deployment.service';
+import { DeploymentService } from '@/features/deployments/api/deployment.service';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {

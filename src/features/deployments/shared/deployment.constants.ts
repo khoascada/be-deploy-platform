@@ -1,4 +1,4 @@
-﻿import { DeploymentStatus } from '@prisma/client';
+import { DeploymentStatus } from '@prisma/client';
 
 export const DEPLOYMENT_QUEUE_NAME = 'deployment-jobs';
 export const DEPLOYMENT_QUEUE_JOB_NAME = 'execute-deployment';

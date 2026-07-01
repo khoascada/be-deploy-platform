@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CsrfOriginGuard } from '@/common/guards/csrf-origin.guard';
 import { ConfigModule } from '@/config/config.module';
 import { AuthModule } from '@/features/auth/auth.module';
-import { DeploymentModule } from '@/features/deployments/deployment.module';
+import { DeploymentApiModule } from '@/features/deployments/api/deployment-api.module';
 import { GithubModule } from '@/features/github/github.module';
 import { ProjectModule } from '@/features/projects/project.module';
 import { UserModule } from '@/features/users/user.module';
@@ -23,7 +23,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     AuthModule,
     GithubModule,
     ProjectModule,
-    DeploymentModule,
+    DeploymentApiModule,
     UserModule,
     ThrottlerModule.forRoot([
       {

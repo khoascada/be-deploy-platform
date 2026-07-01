@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as path from 'node:path';
-import { DeploymentCommandRunnerService } from './deployment-command-runner.service';
-import { DeploymentLogWriter } from './deployment-log-writer';
-import type { DeploymentExecutionContext } from './deployment.types';
+import { DeploymentCommandRunnerService } from '@/features/deployments/worker/deployment-command-runner.service';
+import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
+import type { DeploymentExecutionContext } from '@/features/deployments/shared/deployment.types';
 
 @Injectable()
 export class DeploymentRuntimeService {

@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   DeploymentStatus,
   DeploymentTrigger,
   LogLevel,
@@ -61,6 +61,11 @@ export interface DeploymentLogInput {
   level: LogLevel;
   stream: LogStream;
   message: string;
+}
+
+export interface DeploymentLogRecord extends DeploymentLogInput {
+  id: string;
+  createdAt: Date;
 }
 
 export interface DeploymentSuccessInput {

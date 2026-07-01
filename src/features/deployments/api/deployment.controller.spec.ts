@@ -3,8 +3,8 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
-import { DeploymentController } from './deployment.controller';
-import { DeploymentService } from './deployment.service';
+import { DeploymentController } from '@/features/deployments/api/deployment.controller';
+import { DeploymentService } from '@/features/deployments/api/deployment.service';
 
 describe('DeploymentController', () => {
   let app: INestApplication<App>;

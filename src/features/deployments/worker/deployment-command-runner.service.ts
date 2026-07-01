@@ -1,6 +1,6 @@
-﻿import { Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { spawn } from 'node:child_process';
-import type { DeploymentCommandResult } from './deployment.types';
+import type { DeploymentCommandResult } from '@/features/deployments/shared/deployment.types';
 
 // 
 export interface RunCommandOptions {

@@ -1,6 +1,6 @@
-﻿import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
+import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
-import { DeploymentRepository } from './deployment.repository';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 
 type FakeDeployment = {
   id: string;

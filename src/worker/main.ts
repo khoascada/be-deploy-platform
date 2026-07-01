@@ -1,4 +1,4 @@
-﻿import { DeploymentWorkerService } from '@/features/deployments/deployment-worker.service';
+import { DeploymentWorkerService } from '@/features/deployments/worker/deployment-worker.service';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WorkerAppModule } from './worker.module';

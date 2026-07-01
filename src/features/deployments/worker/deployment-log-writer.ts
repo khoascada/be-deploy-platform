@@ -1,7 +1,12 @@
-﻿import { Logger } from '@nestjs/common';
+import {
+  DEPLOYMENT_LOG_CREATED_EVENT,
+  type DeploymentLogCreatedEvent,
+} from '@/features/deployments/shared/deployment-log-events';
+import { DeploymentLogPublisherService } from '@/features/deployments/shared/deployment-log-publisher.service';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
+import type { DeploymentExecutionContext } from '@/features/deployments/shared/deployment.types';
+import { Logger } from '@nestjs/common';
 import { LogLevel, LogStream } from '@prisma/client';
-import { DeploymentRepository } from './deployment.repository';
-import type { DeploymentExecutionContext } from './deployment.types';
 
 export class DeploymentLogWriter {
   private readonly logger = new Logger(DeploymentLogWriter.name);
@@ -11,6 +16,7 @@ export class DeploymentLogWriter {
   constructor(
     private readonly deployments: DeploymentRepository,
     private readonly context: DeploymentExecutionContext,
+    private readonly publisher: DeploymentLogPublisherService,
   ) {}
 
   system(message: string) {
@@ -46,7 +52,7 @@ export class DeploymentLogWriter {
 
     this.queue = this.queue
       .then(async () => {
-        await this.deployments.appendLog({
+        const createdLog = await this.deployments.appendLog({
           deploymentId: this.context.id,
           projectId: this.context.projectId,
           seq,
@@ -54,6 +60,26 @@ export class DeploymentLogWriter {
           stream,
           message: trimmedMessage,
         });
+
+        try {
+          const event: DeploymentLogCreatedEvent = {
+            type: DEPLOYMENT_LOG_CREATED_EVENT,
+            deploymentId: createdLog.deploymentId,
+            projectId: createdLog.projectId,
+            seq: createdLog.seq,
+            stream: createdLog.stream,
+            level: createdLog.level,
+            message: createdLog.message,
+            createdAt: createdLog.createdAt.toISOString(),
+          };
+
+          await this.publisher.publishLogCreated(event);
+        } catch (error: unknown) {
+          this.logger.error(
+            getErrorMessage(error),
+            'Failed to publish deployment log event',
+          );
+        }
       })
       .catch((error: unknown) => {
         this.logger.error(getErrorMessage(error));

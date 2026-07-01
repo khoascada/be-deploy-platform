@@ -1,13 +1,13 @@
+import { DeploymentCommandError } from '@/features/deployments/worker/deployment-command-runner.service';
+import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
+import { DeploymentRuntimeService } from '@/features/deployments/worker/deployment-runtime.service';
+import { DeploymentSourceService } from '@/features/deployments/worker/deployment-source.service';
+import { DeploymentLogPublisherService } from '@/features/deployments/shared/deployment-log-publisher.service';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
+import type { DeploymentFailureInput } from '@/features/deployments/shared/deployment.types';
 import { Injectable, Logger } from '@nestjs/common';
 import { DeploymentStatus } from '@prisma/client';
-import { DeploymentCommandError } from './deployment-command-runner.service';
-import { DeploymentLogWriter } from './deployment-log-writer';
-import { DeploymentRepository } from './deployment.repository';
-import { DeploymentRuntimeService } from './deployment-runtime.service';
-import { DeploymentSourceService } from './deployment-source.service';
-import type { DeploymentFailureInput } from './deployment.types';
 
-// Logic xử lý worker
 @Injectable()
 export class DeploymentExecutorService {
   private readonly logger = new Logger(DeploymentExecutorService.name);
@@ -16,12 +16,11 @@ export class DeploymentExecutorService {
     private readonly deployments: DeploymentRepository,
     private readonly source: DeploymentSourceService,
     private readonly runtime: DeploymentRuntimeService,
+    private readonly publisher: DeploymentLogPublisherService,
   ) {}
 
-  // Hàm thực thi worker
   async execute(deploymentId: string) {
     const context = await this.deployments.claimQueuedDeployment(deploymentId);
-
 
     if (!context) {
       this.logger.warn(
@@ -30,7 +29,11 @@ export class DeploymentExecutorService {
       return;
     }
 
-    const logWriter = new DeploymentLogWriter(this.deployments, context);
+    const logWriter = new DeploymentLogWriter(
+      this.deployments,
+      context,
+      this.publisher,
+    );
 
     try {
       await logWriter.system(
@@ -38,14 +41,13 @@ export class DeploymentExecutorService {
       );
 
       const repoPath = await this.source.prepareRepository(context, logWriter);
-
       const imageTag = this.runtime.buildImageTag(context);
 
       await this.deployments.updateStatus(
         context.id,
         DeploymentStatus.BUILDING,
       );
-      
+
       await logWriter.system(`Building Docker image ${imageTag}`);
       await this.runtime.buildDockerImage(
         context,

@@ -1,4 +1,4 @@
-﻿import type { EnvVars } from '@/config/env.validation';
+import type { EnvVars } from '@/config/env.validation';
 import type { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
@@ -6,14 +6,14 @@ import * as path from 'node:path';
 import type {
   GithubDeploymentAuthContext,
   GithubService,
-} from '../github/github.service';
+} from '@/features/github/github.service';
 import {
   DeploymentCommandError,
   type DeploymentCommandRunnerService,
-} from './deployment-command-runner.service';
-import type { DeploymentRepository } from './deployment.repository';
-import { DeploymentSourceService } from './deployment-source.service';
-import type { DeploymentExecutionContext } from './deployment.types';
+} from '@/features/deployments/worker/deployment-command-runner.service';
+import type { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
+import { DeploymentSourceService } from '@/features/deployments/worker/deployment-source.service';
+import type { DeploymentExecutionContext } from '@/features/deployments/shared/deployment.types';
 
 function makeContext(
   overrides: Partial<DeploymentExecutionContext> = {},
