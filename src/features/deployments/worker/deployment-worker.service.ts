@@ -29,7 +29,7 @@ export class DeploymentWorkerService implements OnModuleDestroy {
     );
     this.worker = new Worker<DeploymentJobData>(
       DEPLOYMENT_QUEUE_NAME,
-      async (job) => {
+      async (job: any) => {
         await this.executor.execute(job.data.deploymentId);
       },
       {
@@ -41,10 +41,10 @@ export class DeploymentWorkerService implements OnModuleDestroy {
       },
     );
 
-    this.worker.on('completed', (job) => {
+    this.worker.on('completed', (job: any) => {
       this.logger.log(`Completed deployment job ${job.id}`);
     });
-    this.worker.on('failed', (job, error) => {
+    this.worker.on('failed', (job: any, error: any) => {
       this.logger.error(
         `Deployment job ${job?.id ?? 'unknown'} failed: ${error.message}`,
       );
