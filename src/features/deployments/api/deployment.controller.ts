@@ -55,6 +55,7 @@ export class DeploymentController {
     response.flushHeaders();
     response.write(': connected\n\n');
 
+    // đăng ký listener
     const unsubscribe = this.realtime.subscribe(deploymentId, (event) => {
       this.realtime.writeSseEvent(response, event);
     });

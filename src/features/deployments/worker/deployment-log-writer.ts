@@ -1,10 +1,10 @@
-import {
-  DEPLOYMENT_LOG_CREATED_EVENT,
-  type DeploymentLogCreatedEvent,
-} from '@/features/deployments/shared/deployment-log-events';
 import { DeploymentLogPublisherService } from '@/features/deployments/shared/deployment-log-publisher.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import type { DeploymentExecutionContext } from '@/features/deployments/shared/deployment.types';
+import {
+  DEPLOYMENT_LOG_CREATED_EVENT,
+  type DeploymentLogCreatedEvent,
+} from '@/features/deployments/shared/types/deployment-log-events';
 import { Logger } from '@nestjs/common';
 import { LogLevel, LogStream } from '@prisma/client';
 

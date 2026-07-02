@@ -2,7 +2,7 @@ import {
   DEPLOYMENT_LOG_CREATED_EVENT,
   type DeploymentLogCreatedEvent,
   isDeploymentLogCreatedEvent,
-} from '@/features/deployments/shared/deployment-log-events';
+} from '@/features/deployments/shared/types/deployment-log-events';
 import { RedisService } from '@/redis/redis.service';
 import {
   Injectable,
@@ -68,7 +68,6 @@ export class DeploymentRealtimeService
   }
 
   subscribe(deploymentId: string, listener: DeploymentLogListener): () => void {
-    
     const listeners = this.listeners.get(deploymentId) ?? new Set();
     listeners.add(listener);
     this.listeners.set(deploymentId, listeners);
@@ -92,18 +91,21 @@ export class DeploymentRealtimeService
     );
   }
 
+  // nhận event -> gọi từng listener
   private emit(event: DeploymentLogCreatedEvent) {
     const listeners = this.listeners.get(event.deploymentId);
     if (!listeners || listeners.size === 0) {
       return;
     }
 
+    // gọi listener  với para event
     for (const listener of listeners) {
       listener(event);
     }
   }
 }
 
+// biến message từ redis từ string -> DeploymentLogCreatedEvent
 function parseDeploymentLogCreatedEvent(
   payload: string,
 ): DeploymentLogCreatedEvent | null {

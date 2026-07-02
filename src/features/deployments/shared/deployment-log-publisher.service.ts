@@ -1,9 +1,9 @@
-import { RedisService } from '@/redis/redis.service';
-import { Injectable } from '@nestjs/common';
 import {
   DEPLOYMENT_LOG_CREATED_EVENT,
   type DeploymentLogCreatedEvent,
-} from '@/features/deployments/shared/deployment-log-events';
+} from '@/features/deployments/shared/types/deployment-log-events';
+import { RedisService } from '@/redis/redis.service';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class DeploymentLogPublisherService {
