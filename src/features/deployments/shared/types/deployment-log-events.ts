@@ -12,7 +12,7 @@ export interface DeploymentLogCreatedEvent {
   message: string;
   createdAt: string;
 }
-
+// type guard kiểm tra 1 giá trị unknown có đúng shape của DeploymentLogCreatedEvent hay ko
 export function isDeploymentLogCreatedEvent(
   value: unknown,
 ): value is DeploymentLogCreatedEvent {
@@ -22,6 +22,7 @@ export function isDeploymentLogCreatedEvent(
 
   const candidate = value as Record<string, unknown>;
 
+  // chỉ khi true hết thì mới return true
   return (
     candidate.type === DEPLOYMENT_LOG_CREATED_EVENT &&
     typeof candidate.deploymentId === 'string' &&

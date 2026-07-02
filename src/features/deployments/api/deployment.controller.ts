@@ -2,10 +2,13 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { DeploymentAccessService } from '@/features/deployments/api/deployment-access.service';
 import { DeploymentRealtimeService } from '@/features/deployments/api/deployment-realtime.service';
 import { DeploymentService } from '@/features/deployments/api/deployment.service';
+import { DeploymentListItemDto } from '@/features/deployments/api/dto/deployment-list-item.dto';
+import { GetProjectDeploymentsQueryDto } from '@/features/deployments/api/dto/get-project-deployments-query.dto';
 import { DeploymentResponseDto } from '@/features/deployments/api/dto/deployment-response.dto';
-import { Controller, Get, Param, Post, Res } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import {
   ApiCreatedResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -32,6 +35,18 @@ export class DeploymentController {
     return this.deployments.createManualDeployment(userId, projectId);
   }
 
+  @ApiOperation({ summary: 'Get recent deployments for a project' })
+  @ApiParam({ name: 'projectId', example: 'project-123' })
+  @ApiOkResponse({ type: DeploymentListItemDto, isArray: true })
+  @Get()
+  findAll(
+    @CurrentUser('id') userId: string,
+    @Param('projectId') projectId: string,
+    @Query() query: GetProjectDeploymentsQueryDto,
+  ) {
+    return this.deployments.getProjectDeployments(userId, projectId, query.limit);
+  }
+
   @ApiOperation({ summary: 'Stream deployment logs for a project deployment' })
   @ApiParam({ name: 'projectId', example: 'project-123' })
   @ApiParam({ name: 'deploymentId', example: 'deployment-123' })
@@ -55,7 +70,7 @@ export class DeploymentController {
     response.flushHeaders();
     response.write(': connected\n\n');
 
-    // đăng ký listener
+    // đăng ký listener và nó sẽ trả về 1 hàm hủy đăng ký
     const unsubscribe = this.realtime.subscribe(deploymentId, (event) => {
       this.realtime.writeSseEvent(response, event);
     });

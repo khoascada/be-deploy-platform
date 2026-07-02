@@ -58,6 +58,27 @@ export class DeploymentRepository {
     });
   }
 
+  findRecentByProjectId(projectId: string, limit: number) {
+    return this.prisma.deployment.findMany({
+      where: { projectId },
+      orderBy: [{ createdAt: 'desc' }, { deploymentNumber: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        projectId: true,
+        deploymentNumber: true,
+        trigger: true,
+        status: true,
+        branch: true,
+        commitSha: true,
+        commitMessage: true,
+        queuedAt: true,
+        createdAt: true,
+        finishedAt: true,
+      },
+    });
+  }
+
   async markEnqueueFailed(deploymentId: string, errorMessage: string) {
     const finishedAt = new Date();
 

@@ -11,6 +11,10 @@ import type { Project } from '@prisma/client';
 import { DeploymentQueueService } from '@/features/deployments/shared/deployment-queue.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import {
+  type DeploymentListItemDto,
+  toDeploymentListItemDto,
+} from '@/features/deployments/api/dto/deployment-list-item.dto';
+import {
   type DeploymentResponseDto,
   toDeploymentResponseDto,
 } from '@/features/deployments/api/dto/deployment-response.dto';
@@ -96,6 +100,35 @@ export class DeploymentService {
     }
 
     return toDeploymentResponseDto(deployment);
+  }
+
+  async getProjectDeployments(
+    userId: string,
+    projectId: string,
+    limit: number,
+  ): Promise<DeploymentListItemDto[]> {
+    const project = await this.projects.findById(projectId);
+
+    if (!project) {
+      throw new NotFoundError(
+        'Project not found',
+        PROJECT_ERROR_CODE.PROJECT_NOT_FOUND,
+      );
+    }
+
+    if (project.ownerId !== userId) {
+      throw new NotFoundError(
+        'Not found or not accessible',
+        PROJECT_ERROR_CODE.NOT_ACCESS_TO_PROJECT,
+      );
+    }
+
+    const deployments = await this.deployments.findRecentByProjectId(
+      projectId,
+      limit,
+    );
+
+    return deployments.map(toDeploymentListItemDto);
   }
 }
 
