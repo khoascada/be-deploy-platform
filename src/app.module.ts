@@ -5,6 +5,7 @@ import { ConfigModule } from '@/config/config.module';
 import { AuthModule } from '@/features/auth/auth.module';
 import { DeploymentApiModule } from '@/features/deployments/api/deployment-api.module';
 import { GithubModule } from '@/features/github/github.module';
+import { LogsModule } from '@/features/logs/logs.module';
 import { ProjectModule } from '@/features/projects/project.module';
 import { UserModule } from '@/features/users/user.module';
 import { LoggerModule } from '@/logger/logger.module';
@@ -24,6 +25,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     GithubModule,
     ProjectModule,
     DeploymentApiModule,
+    LogsModule,
     UserModule,
     ThrottlerModule.forRoot([
       {

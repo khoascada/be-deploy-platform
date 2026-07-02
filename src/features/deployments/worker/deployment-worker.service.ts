@@ -1,12 +1,12 @@
 import type { EnvVars } from '@/config/env.validation';
+import { DEPLOYMENT_QUEUE_NAME } from '@/features/deployments/shared/constants/deployment.constants';
+import { createBullMqConnection } from '@/features/deployments/shared/deployment-queue.service';
+import type { DeploymentJobData } from '@/features/deployments/shared/deployment.types';
+import { DeploymentExecutorService } from '@/features/deployments/worker/deployment-executor.service';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { DeploymentExecutorService } from '@/features/deployments/worker/deployment-executor.service';
-import { createBullMqConnection } from '@/features/deployments/shared/deployment-queue.service';
-import { DEPLOYMENT_QUEUE_NAME } from '@/features/deployments/shared/deployment.constants';
-import type { DeploymentJobData } from '@/features/deployments/shared/deployment.types';
 
 @Injectable()
 export class DeploymentWorkerService implements OnModuleDestroy {

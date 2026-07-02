@@ -1,23 +1,23 @@
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { DeploymentAccessService } from '@/features/deployments/api/deployment-access.service';
+import { DeploymentRealtimeService } from '@/features/deployments/api/deployment-realtime.service';
+import { DeploymentService } from '@/features/deployments/api/deployment.service';
+import { DeploymentResponseDto } from '@/features/deployments/api/dto/deployment-response.dto';
 import { Controller, Get, Param, Post, Res } from '@nestjs/common';
 import {
   ApiCreatedResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { DeploymentRealtimeService } from '@/features/deployments/api/deployment-realtime.service';
-import { DeploymentService } from '@/features/deployments/api/deployment.service';
-import { DeploymentLogResponseDto } from '@/features/deployments/api/dto/deployment-log-response.dto';
-import { DeploymentResponseDto } from '@/features/deployments/api/dto/deployment-response.dto';
 
 @ApiTags('deployments')
 @Controller('projects/:projectId/deployments')
 export class DeploymentController {
   constructor(
     private readonly deployments: DeploymentService,
+    private readonly deploymentAccess: DeploymentAccessService,
     private readonly realtime: DeploymentRealtimeService,
   ) {}
 
@@ -32,19 +32,6 @@ export class DeploymentController {
     return this.deployments.createManualDeployment(userId, projectId);
   }
 
-  @ApiOperation({ summary: 'Get deployment logs for a project deployment' })
-  @ApiParam({ name: 'projectId', example: 'project-123' })
-  @ApiParam({ name: 'deploymentId', example: 'deployment-123' })
-  @ApiOkResponse({ type: DeploymentLogResponseDto, isArray: true })
-  @Get(':deploymentId/logs')
-  findLogs(
-    @CurrentUser('id') userId: string,
-    @Param('projectId') projectId: string,
-    @Param('deploymentId') deploymentId: string,
-  ) {
-    return this.deployments.getDeploymentLogs(userId, projectId, deploymentId);
-  }
-
   @ApiOperation({ summary: 'Stream deployment logs for a project deployment' })
   @ApiParam({ name: 'projectId', example: 'project-123' })
   @ApiParam({ name: 'deploymentId', example: 'deployment-123' })
@@ -55,7 +42,11 @@ export class DeploymentController {
     @Param('deploymentId') deploymentId: string,
     @Res() response: Response,
   ) {
-    await this.deployments.assertDeploymentAccess(userId, projectId, deploymentId);
+    await this.deploymentAccess.assertDeploymentAccess(
+      userId,
+      projectId,
+      deploymentId,
+    );
 
     response.setHeader('Content-Type', 'text/event-stream');
     response.setHeader('Cache-Control', 'no-cache, no-transform');

@@ -1,5 +1,4 @@
 import {
-  COMMON_ERROR_CODE,
   DEPLOYMENT_ERROR_CODE,
   PROJECT_ERROR_CODE,
 } from '@/common/constants';
@@ -9,17 +8,13 @@ import {
 } from '@/common/exceptions/app.exceptions';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Project } from '@prisma/client';
-import { ProjectRepository } from '@/features/projects/project.repository';
 import { DeploymentQueueService } from '@/features/deployments/shared/deployment-queue.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
-import {
-  type DeploymentLogResponseDto,
-  toDeploymentLogResponseDto,
-} from '@/features/deployments/api/dto/deployment-log-response.dto';
 import {
   type DeploymentResponseDto,
   toDeploymentResponseDto,
 } from '@/features/deployments/api/dto/deployment-response.dto';
+import { ProjectRepository } from '@/features/projects/project.repository';
 
 const REQUIRED_DEPLOY_STRING_FIELDS = [
   'deployBranch',
@@ -101,43 +96,6 @@ export class DeploymentService {
     }
 
     return toDeploymentResponseDto(deployment);
-  }
-
-  async getDeploymentLogs(
-    userId: string,
-    projectId: string,
-    deploymentId: string,
-  ): Promise<DeploymentLogResponseDto[]> {
-    await this.assertDeploymentAccess(userId, projectId, deploymentId);
-    const logs = await this.deployments.findLogs(deploymentId);
-    return logs.map(toDeploymentLogResponseDto);
-  }
-
-  async assertDeploymentAccess(
-    userId: string,
-    projectId: string,
-    deploymentId: string,
-  ) {
-    const deployment = await this.deployments.findById(deploymentId);
-
-    if (!deployment) {
-      throw new NotFoundError(
-        'Deployment not found',
-        COMMON_ERROR_CODE.NOT_FOUND,
-      );
-    }
-
-    if (
-      deployment.projectId !== projectId ||
-      deployment.project.ownerId !== userId
-    ) {
-      throw new NotFoundError(
-        'Not found or not accessible',
-        PROJECT_ERROR_CODE.NOT_ACCESS_TO_PROJECT,
-      );
-    }
-
-    return deployment;
   }
 }
 

@@ -1,9 +1,6 @@
 import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
-import { PrismaService } from '@/prisma/prisma.service';
-import { Injectable } from '@nestjs/common';
-import { DeploymentStatus, DeploymentTrigger } from '@prisma/client';
-import { ACTIVE_DEPLOYMENT_STATUSES } from '@/features/deployments/shared/deployment.constants';
+import { ACTIVE_DEPLOYMENT_STATUSES } from '@/features/deployments/shared/constants/deployment.constants';
 import type {
   DeploymentExecutionContext,
   DeploymentFailureInput,
@@ -12,6 +9,9 @@ import type {
   DeploymentResolvedCommitInput,
   DeploymentSuccessInput,
 } from '@/features/deployments/shared/deployment.types';
+import { PrismaService } from '@/prisma/prisma.service';
+import { Injectable } from '@nestjs/common';
+import { DeploymentStatus, DeploymentTrigger } from '@prisma/client';
 
 @Injectable()
 export class DeploymentRepository {
@@ -187,13 +187,6 @@ export class DeploymentRepository {
           },
         },
       },
-    });
-  }
-
-  findLogs(deploymentId: string) {
-    return this.prisma.deploymentLog.findMany({
-      where: { deploymentId },
-      orderBy: { seq: 'asc' },
     });
   }
 

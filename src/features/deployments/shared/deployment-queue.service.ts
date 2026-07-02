@@ -1,13 +1,13 @@
 import type { EnvVars } from '@/config/env.validation';
+import {
+  DEPLOYMENT_QUEUE_JOB_NAME,
+  DEPLOYMENT_QUEUE_NAME,
+} from '@/features/deployments/shared/constants/deployment.constants';
+import type { DeploymentJobData } from '@/features/deployments/shared/deployment.types';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
-import {
-  DEPLOYMENT_QUEUE_JOB_NAME,
-  DEPLOYMENT_QUEUE_NAME,
-} from '@/features/deployments/shared/deployment.constants';
-import type { DeploymentJobData } from '@/features/deployments/shared/deployment.types';
 
 @Injectable()
 // onModuleDestroy giúp Nest gọi method khi bạn shutdown app/module (onModuleDestroy)

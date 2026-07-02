@@ -16,8 +16,11 @@ import type Redis from 'ioredis';
 
 type DeploymentLogListener = (event: DeploymentLogCreatedEvent) => void;
 
+// redis subscribe
 @Injectable()
-export class DeploymentRealtimeService implements OnModuleInit, OnModuleDestroy {
+export class DeploymentRealtimeService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(DeploymentRealtimeService.name);
   private readonly listeners = new Map<string, Set<DeploymentLogListener>>();
   private subscriber: Redis | null = null;
@@ -32,6 +35,7 @@ export class DeploymentRealtimeService implements OnModuleInit, OnModuleDestroy 
       return;
     }
 
+    // connection để lắng nghe pub/sub
     this.subscriber = this.redis.client.duplicate();
     this.subscriber.on('error', (error) => {
       this.logger.error(error, 'Deployment log subscriber error');
@@ -63,10 +67,8 @@ export class DeploymentRealtimeService implements OnModuleInit, OnModuleDestroy 
     this.listeners.clear();
   }
 
-  subscribe(
-    deploymentId: string,
-    listener: DeploymentLogListener,
-  ): () => void {
+  subscribe(deploymentId: string, listener: DeploymentLogListener): () => void {
+    
     const listeners = this.listeners.get(deploymentId) ?? new Set();
     listeners.add(listener);
     this.listeners.set(deploymentId, listeners);
