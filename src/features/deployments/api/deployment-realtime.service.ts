@@ -1,8 +1,13 @@
-import {
+﻿import {
   DEPLOYMENT_LOG_CREATED_EVENT,
   type DeploymentLogCreatedEvent,
   isDeploymentLogCreatedEvent,
 } from '@/features/deployments/shared/types/deployment-log-events';
+import {
+  DEPLOYMENT_STATUS_CHANGED_EVENT,
+  type DeploymentStatusChangedEvent,
+  isDeploymentStatusChangedEvent,
+} from '@/features/deployments/shared/types/deployment-status-events';
 import { RedisService } from '@/redis/redis.service';
 import {
   Injectable,
@@ -14,15 +19,17 @@ import { HttpAdapterHost } from '@nestjs/core';
 import type { Response } from 'express';
 import type Redis from 'ioredis';
 
-type DeploymentLogListener = (event: DeploymentLogCreatedEvent) => void;
+type DeploymentRealtimeEvent =
+  | DeploymentLogCreatedEvent
+  | DeploymentStatusChangedEvent;
+type DeploymentRealtimeListener = (event: DeploymentRealtimeEvent) => void;
 
-// redis subscribe
 @Injectable()
 export class DeploymentRealtimeService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(DeploymentRealtimeService.name);
-  private readonly listeners = new Map<string, Set<DeploymentLogListener>>();
+  private readonly listeners = new Map<string, Set<DeploymentRealtimeListener>>();
   private subscriber: Redis | null = null;
 
   constructor(
@@ -35,19 +42,16 @@ export class DeploymentRealtimeService
       return;
     }
 
-    // connection để lắng nghe pub/sub
     this.subscriber = this.redis.client.duplicate();
     this.subscriber.on('error', (error) => {
-      this.logger.error(error, 'Deployment log subscriber error');
+      this.logger.error(error, 'Deployment realtime subscriber error');
     });
     this.subscriber.on('message', (channel, message) => {
-      if (channel !== DEPLOYMENT_LOG_CREATED_EVENT) {
-        return;
-      }
-
-      const event = parseDeploymentLogCreatedEvent(message);
+      const event = parseDeploymentRealtimeEvent(channel, message);
       if (!event) {
-        this.logger.warn('Ignoring malformed deployment log event payload');
+        this.logger.warn(
+          `Ignoring malformed deployment realtime payload for channel ${channel}`,
+        );
         return;
       }
 
@@ -55,7 +59,10 @@ export class DeploymentRealtimeService
     });
 
     await this.subscriber.connect();
-    await this.subscriber.subscribe(DEPLOYMENT_LOG_CREATED_EVENT);
+    await this.subscriber.subscribe(
+      DEPLOYMENT_LOG_CREATED_EVENT,
+      DEPLOYMENT_STATUS_CHANGED_EVENT,
+    );
   }
 
   async onModuleDestroy() {
@@ -67,7 +74,10 @@ export class DeploymentRealtimeService
     this.listeners.clear();
   }
 
-  subscribe(deploymentId: string, listener: DeploymentLogListener): () => void {
+  subscribe(
+    deploymentId: string,
+    listener: DeploymentRealtimeListener,
+  ): () => void {
     const listeners = this.listeners.get(deploymentId) ?? new Set();
     listeners.add(listener);
     this.listeners.set(deploymentId, listeners);
@@ -85,33 +95,44 @@ export class DeploymentRealtimeService
     };
   }
 
-  writeSseEvent(response: Response, event: DeploymentLogCreatedEvent) {
-    response.write(
-      `event: ${DEPLOYMENT_LOG_CREATED_EVENT}\ndata: ${JSON.stringify(event)}\n\n`,
-    );
+  writeSseEvent(response: Response, event: DeploymentRealtimeEvent) {
+    response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
   }
 
-  // nhận event -> gọi từng listener
-  private emit(event: DeploymentLogCreatedEvent) {
+  private emit(event: DeploymentRealtimeEvent) {
     const listeners = this.listeners.get(event.deploymentId);
     if (!listeners || listeners.size === 0) {
       return;
     }
 
-    // gọi listener  với para event
     for (const listener of listeners) {
       listener(event);
     }
   }
 }
 
-// biến message từ redis từ string -> DeploymentLogCreatedEvent
-function parseDeploymentLogCreatedEvent(
+function parseDeploymentRealtimeEvent(
+  channel: string,
   payload: string,
-): DeploymentLogCreatedEvent | null {
+): DeploymentRealtimeEvent | null {
   try {
     const parsed: unknown = JSON.parse(payload);
-    return isDeploymentLogCreatedEvent(parsed) ? parsed : null;
+
+    if (
+      channel === DEPLOYMENT_LOG_CREATED_EVENT &&
+      isDeploymentLogCreatedEvent(parsed)
+    ) {
+      return parsed;
+    }
+
+    if (
+      channel === DEPLOYMENT_STATUS_CHANGED_EVENT &&
+      isDeploymentStatusChangedEvent(parsed)
+    ) {
+      return parsed;
+    }
+
+    return null;
   } catch {
     return null;
   }

@@ -1,10 +1,11 @@
+﻿import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
+import { toDeploymentStatusChangedEvent } from '@/features/deployments/shared/types/deployment-status-events';
+import type { DeploymentFailureInput } from '@/features/deployments/shared/deployment.types';
 import { DeploymentCommandError } from '@/features/deployments/worker/deployment-command-runner.service';
 import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
 import { DeploymentRuntimeService } from '@/features/deployments/worker/deployment-runtime.service';
 import { DeploymentSourceService } from '@/features/deployments/worker/deployment-source.service';
-import { DeploymentLogPublisherService } from '@/features/deployments/shared/deployment-log-publisher.service';
-import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
-import type { DeploymentFailureInput } from '@/features/deployments/shared/deployment.types';
 import { Injectable, Logger } from '@nestjs/common';
 import { DeploymentStatus } from '@prisma/client';
 
@@ -16,7 +17,7 @@ export class DeploymentExecutorService {
     private readonly deployments: DeploymentRepository,
     private readonly source: DeploymentSourceService,
     private readonly runtime: DeploymentRuntimeService,
-    private readonly publisher: DeploymentLogPublisherService,
+    private readonly publisher: DeploymentRealtimePublisherService,
   ) {}
 
   async execute(deploymentId: string) {
@@ -28,6 +29,15 @@ export class DeploymentExecutorService {
       );
       return;
     }
+
+    await this.publishStatusChanged({
+      id: context.id,
+      errorMessage: context.errorMessage,
+      finishedAt: context.finishedAt,
+      projectId: context.projectId,
+      status: context.status,
+      updatedAt: context.updatedAt,
+    });
 
     const logWriter = new DeploymentLogWriter(
       this.deployments,
@@ -43,10 +53,11 @@ export class DeploymentExecutorService {
       const repoPath = await this.source.prepareRepository(context, logWriter);
       const imageTag = this.runtime.buildImageTag(context);
 
-      await this.deployments.updateStatus(
+      const buildingDeployment = await this.deployments.updateStatus(
         context.id,
         DeploymentStatus.BUILDING,
       );
+      await this.publishStatusChanged(buildingDeployment);
 
       await logWriter.system(`Building Docker image ${imageTag}`);
       await this.runtime.buildDockerImage(
@@ -56,13 +67,14 @@ export class DeploymentExecutorService {
         logWriter,
       );
 
-      await this.deployments.updateStatus(
+      const deployingDeployment = await this.deployments.updateStatus(
         context.id,
         DeploymentStatus.DEPLOYING,
         {
           imageTag,
         },
       );
+      await this.publishStatusChanged(deployingDeployment);
       await logWriter.system(
         `Deploying container ${context.project.containerName}`,
       );
@@ -76,13 +88,41 @@ export class DeploymentExecutorService {
         `Deployment finished successfully with container ${containerId}`,
       );
       await logWriter.flush();
-      await this.deployments.markSuccess(context.id, { imageTag, containerId });
+      const successfulDeployment = await this.deployments.markSuccess(context.id, {
+        imageTag,
+        containerId,
+      });
+      await this.publishStatusChanged(successfulDeployment);
     } catch (error) {
       const failure = toFailureInput(error);
       await logWriter.error(`Deployment failed: ${failure.errorMessage}`);
       await logWriter.flush();
-      await this.deployments.markFailed(context.id, failure);
+      const failedDeployment = await this.deployments.markFailed(
+        context.id,
+        failure,
+      );
+      await this.publishStatusChanged(failedDeployment);
       throw error;
+    }
+  }
+
+  private async publishStatusChanged(deployment: {
+    id: string;
+    errorMessage: string | null;
+    finishedAt: Date | null;
+    projectId: string;
+    status: DeploymentStatus;
+    updatedAt: Date;
+  }) {
+    try {
+      await this.publisher.publishStatusChanged(
+        toDeploymentStatusChangedEvent(deployment),
+      );
+    } catch (error) {
+      this.logger.error(
+        getErrorMessage(error),
+        `Failed to publish deployment status for ${deployment.id}`,
+      );
     }
   }
 }

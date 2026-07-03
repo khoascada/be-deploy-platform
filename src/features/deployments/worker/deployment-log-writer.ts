@@ -1,4 +1,4 @@
-import { DeploymentLogPublisherService } from '@/features/deployments/shared/deployment-log-publisher.service';
+﻿import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import type { DeploymentExecutionContext } from '@/features/deployments/shared/deployment.types';
 import {
@@ -16,7 +16,7 @@ export class DeploymentLogWriter {
   constructor(
     private readonly deployments: DeploymentRepository,
     private readonly context: DeploymentExecutionContext,
-    private readonly publisher: DeploymentLogPublisherService,
+    private readonly publisher: DeploymentRealtimePublisherService,
   ) {}
 
   system(message: string) {

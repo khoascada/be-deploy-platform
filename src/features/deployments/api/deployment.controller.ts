@@ -1,4 +1,4 @@
-import { CurrentUser } from '@/common/decorators/current-user.decorator';
+﻿import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { DeploymentAccessService } from '@/features/deployments/api/deployment-access.service';
 import { DeploymentRealtimeService } from '@/features/deployments/api/deployment-realtime.service';
 import { DeploymentService } from '@/features/deployments/api/deployment.service';
@@ -47,11 +47,12 @@ export class DeploymentController {
     return this.deployments.getProjectDeployments(userId, projectId, query.limit);
   }
 
-  @ApiOperation({ summary: 'Stream deployment logs for a project deployment' })
+  @ApiOperation({ summary: 'Stream deployment realtime events for a project deployment' })
   @ApiParam({ name: 'projectId', example: 'project-123' })
   @ApiParam({ name: 'deploymentId', example: 'deployment-123' })
+  @Get(':deploymentId/stream')
   @Get(':deploymentId/logs/stream')
-  async streamLogs(
+  async streamDeploymentEvents(
     @CurrentUser('id') userId: string,
     @Param('projectId') projectId: string,
     @Param('deploymentId') deploymentId: string,
@@ -70,7 +71,6 @@ export class DeploymentController {
     response.flushHeaders();
     response.write(': connected\n\n');
 
-    // đăng ký listener và nó sẽ trả về 1 hàm hủy đăng ký
     const unsubscribe = this.realtime.subscribe(deploymentId, (event) => {
       this.realtime.writeSseEvent(response, event);
     });

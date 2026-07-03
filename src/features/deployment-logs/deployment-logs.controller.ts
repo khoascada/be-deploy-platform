@@ -1,6 +1,6 @@
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
-import { DeploymentLogsService } from '@/features/logs/deployment-logs.service';
-import { DeploymentLogResponseDto } from '@/features/logs/dto/deployment-log-response.dto';
+import { DeploymentLogsService } from '@/features/deployment-logs/deployment-logs.service';
+import { DeploymentLogResponseDto } from '@/features/deployment-logs/dto/deployment-log-response.dto';
 import { Controller, Get, Param } from '@nestjs/common';
 import {
   ApiOkResponse,

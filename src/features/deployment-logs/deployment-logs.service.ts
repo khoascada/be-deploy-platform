@@ -1,9 +1,9 @@
-import { DeploymentAccessService } from '@/features/deployments/api/deployment-access.service';
 import {
   DeploymentLogResponseDto,
   toDeploymentLogResponseDto,
-} from '@/features/logs/dto/deployment-log-response.dto';
-import { LogsRepository } from '@/features/logs/logs.repository';
+} from '@/features/deployment-logs/dto/deployment-log-response.dto';
+import { LogsRepository } from '@/features/deployment-logs/logs.repository';
+import { DeploymentAccessService } from '@/features/deployments/api/deployment-access.service';
 import { Injectable } from '@nestjs/common';
 
 @Injectable()

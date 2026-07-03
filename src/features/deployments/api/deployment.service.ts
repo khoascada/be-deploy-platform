@@ -1,4 +1,4 @@
-import {
+﻿import {
   DEPLOYMENT_ERROR_CODE,
   PROJECT_ERROR_CODE,
 } from '@/common/constants';
@@ -6,10 +6,6 @@ import {
   NotFoundError,
   ValidationError,
 } from '@/common/exceptions/app.exceptions';
-import { Injectable, Logger } from '@nestjs/common';
-import type { Project } from '@prisma/client';
-import { DeploymentQueueService } from '@/features/deployments/shared/deployment-queue.service';
-import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import {
   type DeploymentListItemDto,
   toDeploymentListItemDto,
@@ -18,7 +14,13 @@ import {
   type DeploymentResponseDto,
   toDeploymentResponseDto,
 } from '@/features/deployments/api/dto/deployment-response.dto';
+import { DeploymentQueueService } from '@/features/deployments/shared/deployment-queue.service';
+import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
+import { toDeploymentStatusChangedEvent } from '@/features/deployments/shared/types/deployment-status-events';
 import { ProjectRepository } from '@/features/projects/project.repository';
+import { Injectable, Logger } from '@nestjs/common';
+import type { Project } from '@prisma/client';
 
 const REQUIRED_DEPLOY_STRING_FIELDS = [
   'deployBranch',
@@ -36,6 +38,7 @@ export class DeploymentService {
     private readonly projects: ProjectRepository,
     private readonly deployments: DeploymentRepository,
     private readonly deploymentQueue: DeploymentQueueService,
+    private readonly realtimePublisher: DeploymentRealtimePublisherService,
   ) {}
 
   async createManualDeployment(
@@ -88,6 +91,8 @@ export class DeploymentService {
       project.deployBranch,
     );
 
+    await this.publishStatusChanged(deployment);
+
     try {
       await this.deploymentQueue.enqueue(deployment.id);
     } catch (error) {
@@ -95,7 +100,11 @@ export class DeploymentService {
       this.logger.error(
         `Failed to enqueue deployment ${deployment.id}: ${message}`,
       );
-      await this.deployments.markEnqueueFailed(deployment.id, message);
+      const failedDeployment = await this.deployments.markEnqueueFailed(
+        deployment.id,
+        message,
+      );
+      await this.publishStatusChanged(failedDeployment);
       throw error;
     }
 
@@ -129,6 +138,26 @@ export class DeploymentService {
     );
 
     return deployments.map(toDeploymentListItemDto);
+  }
+
+  private async publishStatusChanged(deployment: {
+    id: string;
+    errorMessage: string | null;
+    finishedAt: Date | null;
+    projectId: string;
+    status: import('@prisma/client').DeploymentStatus;
+    updatedAt: Date;
+  }) {
+    try {
+      await this.realtimePublisher.publishStatusChanged(
+        toDeploymentStatusChangedEvent(deployment),
+      );
+    } catch (error) {
+      this.logger.error(
+        getErrorMessage(error),
+        `Failed to publish deployment status for ${deployment.id}`,
+      );
+    }
   }
 }
 
