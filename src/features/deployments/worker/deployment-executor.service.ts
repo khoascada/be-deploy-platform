@@ -6,8 +6,9 @@ import { DeploymentCommandError } from '@/features/deployments/worker/deployment
 import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
 import { DeploymentRuntimeService } from '@/features/deployments/worker/deployment-runtime.service';
 import { DeploymentSourceService } from '@/features/deployments/worker/deployment-source.service';
+import { EnvVarService } from '@/features/env-vars/env-var.service';
 import { Injectable, Logger } from '@nestjs/common';
-import { DeploymentStatus } from '@prisma/client';
+import { DeploymentStatus, EnvScope } from '@prisma/client';
 
 @Injectable()
 export class DeploymentExecutorService {
@@ -18,6 +19,7 @@ export class DeploymentExecutorService {
     private readonly source: DeploymentSourceService,
     private readonly runtime: DeploymentRuntimeService,
     private readonly publisher: DeploymentRealtimePublisherService,
+    private readonly envVars: EnvVarService,
   ) {}
 
   async execute(deploymentId: string) {
@@ -51,6 +53,32 @@ export class DeploymentExecutorService {
       );
 
       const repoPath = await this.source.prepareRepository(context, logWriter);
+      
+      // Resolve env vars một lần để dùng lại cho cả build và runtime.
+      const resolvedEnvVars = await this.envVars.getResolvedEnabledProjectEnvVars(
+        context.projectId,
+      );
+      // Tách env dành cho docker build.
+      const buildEnvVars = resolvedEnvVars.filter((envVar) =>
+        envVar.scope === EnvScope.BUILD || envVar.scope === EnvScope.BOTH,
+      );
+      // Tách env dành cho docker run.
+      const runtimeEnvVars = resolvedEnvVars.filter((envVar) =>
+        envVar.scope === EnvScope.RUNTIME || envVar.scope === EnvScope.BOTH,
+      );
+
+      if (buildEnvVars.length > 0) {
+        await logWriter.system(
+          `Applying ${buildEnvVars.length} build environment variables`,
+        );
+      }
+
+      if (runtimeEnvVars.length > 0) {
+        await logWriter.system(
+          `Applying ${runtimeEnvVars.length} runtime environment variables`,
+        );
+      }
+
       const imageTag = this.runtime.buildImageTag(context);
       // update status deploying
       const buildingDeployment = await this.deployments.updateStatus(
@@ -65,6 +93,7 @@ export class DeploymentExecutorService {
         context,
         repoPath,
         imageTag,
+        buildEnvVars,
         logWriter,
       );
 
@@ -86,6 +115,7 @@ export class DeploymentExecutorService {
       const containerId = await this.runtime.deployContainer(
         context,
         imageTag,
+        runtimeEnvVars,
         logWriter,
       );
 
@@ -153,3 +183,4 @@ function toFailureInput(error: unknown): DeploymentFailureInput {
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown deployment error';
 }
+

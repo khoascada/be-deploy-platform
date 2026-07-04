@@ -8,5 +8,6 @@ import { EnvVarService } from './env-var.service';
   imports: [ProjectModule],
   controllers: [EnvVarController],
   providers: [EnvVarService, EnvVarRepository],
+  exports: [EnvVarService, EnvVarRepository],
 })
 export class EnvVarModule {}

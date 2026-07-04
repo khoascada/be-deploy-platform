@@ -5,10 +5,11 @@
 import { NotFoundError } from '@/common/exceptions/app.exceptions';
 import type { EnvVars } from '@/config/env.validation';
 import { ProjectRepository } from '@/features/projects/project.repository';
+import type { ResolvedEnvVar } from '@/features/deployments/shared/deployment.types';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { toEnvVarResponseDto } from './dto/env-var-response.dto';
-import { encryptEnvVarValue } from './env-var-cipher';
+import { decryptEnvVarValue, encryptEnvVarValue } from './env-var-cipher';
 import { EnvVarRepository } from './env-var.repository';
 import type {
   CreateEnvVarInput,
@@ -79,6 +80,18 @@ export class EnvVarService {
     await this.assertProjectAccess(userId, projectId);
     const envVar = await this.assertEnvVarAccess(projectId, envVarId);
     await this.envVars.delete(envVar.id);
+  }
+
+  // Resolve plaintext env values cho worker dùng nội bộ khi build/run container.
+  async getResolvedEnabledProjectEnvVars(projectId: string): Promise<ResolvedEnvVar[]> {
+    const envVars = await this.envVars.findEnabledByProjectId(projectId);
+    const encryptionKey = this.getEncryptionKey();
+
+    return envVars.map((envVar) => ({
+      key: envVar.key,
+      value: decryptEnvVarValue(envVar.valueEncrypted, encryptionKey),
+      scope: envVar.scope,
+    }));
   }
 
   private async assertProjectAccess(userId: string, projectId: string) {

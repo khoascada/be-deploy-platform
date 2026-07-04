@@ -18,6 +18,17 @@ export class EnvVarRepository {
     });
   }
 
+  // Lấy các env đang bật để worker inject vào build/run.
+  findEnabledByProjectId(projectId: string) {
+    return this.prisma.envVar.findMany({
+      where: {
+        projectId,
+        isEnabled: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   findById(id: string) {
     return this.prisma.envVar.findUnique({
       where: { id },

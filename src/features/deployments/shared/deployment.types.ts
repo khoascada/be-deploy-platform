@@ -1,6 +1,7 @@
-import type {
+﻿import type {
   DeploymentStatus,
   DeploymentTrigger,
+  EnvScope,
   LogLevel,
   LogStream,
   ProjectStatus,
@@ -82,4 +83,10 @@ export interface DeploymentResolvedCommitInput {
   commitMessage: string | null;
   commitAuthorName: string | null;
   commitAuthorEmail: string | null;
+}
+
+export interface ResolvedEnvVar {
+  key: string;
+  value: string;
+  scope: EnvScope;
 }
