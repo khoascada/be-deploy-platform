@@ -1,4 +1,4 @@
-generator client {
+﻿generator client {
   provider = "prisma-client-js"
 }
 
@@ -337,7 +337,7 @@ model EnvVar {
   updatedAt DateTime @updatedAt
 
   // Trong một project, không nên có 2 env cùng key và cùng scope
-  @@unique([projectId, key, scope])
+  @@unique([projectId, key])
 }
 
 model WebhookEvent {
@@ -445,3 +445,4 @@ model WebhookEvent {
   /// Tối ưu query webhook gần đây
   @@index([receivedAt])
 }
+

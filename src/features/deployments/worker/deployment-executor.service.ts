@@ -1,7 +1,7 @@
 ﻿import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
-import { toDeploymentStatusChangedEvent } from '@/features/deployments/shared/types/deployment-status-events';
 import type { DeploymentFailureInput } from '@/features/deployments/shared/deployment.types';
+import { toDeploymentStatusChangedEvent } from '@/features/deployments/shared/types/deployment-status-events';
 import { DeploymentCommandError } from '@/features/deployments/worker/deployment-command-runner.service';
 import { DeploymentLogWriter } from '@/features/deployments/worker/deployment-log-writer';
 import { DeploymentRuntimeService } from '@/features/deployments/worker/deployment-runtime.service';
@@ -52,11 +52,12 @@ export class DeploymentExecutorService {
 
       const repoPath = await this.source.prepareRepository(context, logWriter);
       const imageTag = this.runtime.buildImageTag(context);
-
+      // update status deploying
       const buildingDeployment = await this.deployments.updateStatus(
         context.id,
         DeploymentStatus.BUILDING,
       );
+      // pub vào redis để SSE lên FE
       await this.publishStatusChanged(buildingDeployment);
 
       await logWriter.system(`Building Docker image ${imageTag}`);
@@ -67,6 +68,7 @@ export class DeploymentExecutorService {
         logWriter,
       );
 
+      // update status deploying
       const deployingDeployment = await this.deployments.updateStatus(
         context.id,
         DeploymentStatus.DEPLOYING,
@@ -74,10 +76,13 @@ export class DeploymentExecutorService {
           imageTag,
         },
       );
+      // pub vào redis để SSE lên FE
       await this.publishStatusChanged(deployingDeployment);
+
       await logWriter.system(
         `Deploying container ${context.project.containerName}`,
       );
+
       const containerId = await this.runtime.deployContainer(
         context,
         imageTag,
@@ -88,10 +93,13 @@ export class DeploymentExecutorService {
         `Deployment finished successfully with container ${containerId}`,
       );
       await logWriter.flush();
-      const successfulDeployment = await this.deployments.markSuccess(context.id, {
-        imageTag,
-        containerId,
-      });
+      const successfulDeployment = await this.deployments.markSuccess(
+        context.id,
+        {
+          imageTag,
+          containerId,
+        },
+      );
       await this.publishStatusChanged(successfulDeployment);
     } catch (error) {
       const failure = toFailureInput(error);

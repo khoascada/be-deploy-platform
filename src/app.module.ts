@@ -1,4 +1,4 @@
-import { RATE_LIMIT } from '@/common/constants';
+﻿import { RATE_LIMIT } from '@/common/constants';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CsrfOriginGuard } from '@/common/guards/csrf-origin.guard';
 import { ConfigModule } from '@/config/config.module';
@@ -6,6 +6,7 @@ import { AuthModule } from '@/features/auth/auth.module';
 import { DeploymentApiModule } from '@/features/deployments/api/deployment-api.module';
 import { GithubModule } from '@/features/github/github.module';
 import { LogsModule } from '@/features/deployment-logs/logs.module';
+import { EnvVarModule } from '@/features/env-vars/env-var.module';
 import { ProjectModule } from '@/features/projects/project.module';
 import { UserModule } from '@/features/users/user.module';
 import { LoggerModule } from '@/logger/logger.module';
@@ -24,6 +25,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     AuthModule,
     GithubModule,
     ProjectModule,
+    EnvVarModule,
     DeploymentApiModule,
     LogsModule,
     UserModule,
@@ -47,3 +49,5 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
   ],
 })
 export class AppModule {}
+
+

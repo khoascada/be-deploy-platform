@@ -8,6 +8,13 @@ const githubEncryptionKeySchema = z
     'GITHUB_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
   );
 
+const envVarEncryptionKeySchema = z
+  .string()
+  .refine(
+    (value) => Buffer.from(value, 'base64').length === 32,
+    'ENV_VAR_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
+  );
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
@@ -29,6 +36,7 @@ export const envSchema = z.object({
   GITHUB_OAUTH_REDIRECT_URI: z.url().optional(),
   GITHUB_OAUTH_SCOPE: z.string().min(1).optional(),
   GITHUB_TOKEN_ENCRYPTION_KEY: githubEncryptionKeySchema.optional(),
+  ENV_VAR_ENCRYPTION_KEY: envVarEncryptionKeySchema.optional(),
 });
 
 export type EnvVars = z.infer<typeof envSchema>;
