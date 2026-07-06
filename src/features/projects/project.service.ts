@@ -1,9 +1,10 @@
-import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
+﻿import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
 import type { PaginationDto } from '@/common/dto/pagination.dto';
 import {
   ConflictError,
   NotFoundError,
 } from '@/common/exceptions/app.exceptions';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import { Injectable } from '@nestjs/common';
 import { GithubService } from '../github/github.service';
 import { toProjectDetailDto } from './dto/project-detail-response.dto';
@@ -22,6 +23,7 @@ export class ProjectService {
   constructor(
     private readonly projects: ProjectRepository,
     private readonly github: GithubService,
+    private readonly deployments: DeploymentRepository,
   ) {}
 
   async findAllByUserId(userId: string, pagination: PaginationDto) {
@@ -46,7 +48,10 @@ export class ProjectService {
     const project = await this.projects.findById(id);
 
     if (!project) {
-      throw new NotFoundError('Project not found', COMMON_ERROR_CODE.NOT_FOUND);
+      throw new NotFoundError(
+        'Project not found',
+        PROJECT_ERROR_CODE.PROJECT_NOT_FOUND,
+      );
     }
 
     if (project.ownerId !== userId) {
@@ -148,6 +153,41 @@ export class ProjectService {
     );
   }
 
+  async deleteProject(userId: string, projectId: string) {
+    const project = await this.projects.findById(projectId);
+
+    if (!project) {
+      throw new NotFoundError('Project not found', COMMON_ERROR_CODE.NOT_FOUND);
+    }
+
+    if (project.ownerId !== userId) {
+      throw new NotFoundError(
+        'Project not found',
+        PROJECT_ERROR_CODE.PROJECT_NOT_FOUND,
+      );
+    }
+
+    const activeDeployment =
+      await this.deployments.findActiveByProjectId(projectId);
+    if (activeDeployment) {
+      throw new ConflictError(
+        'Cannot delete project while a deployment is still active',
+        PROJECT_ERROR_CODE.PROJECT_HAS_ACTIVE_DEPLOYMENT,
+      );
+    }
+
+    if (project.webhookId) {
+      await this.github.deleteRepositoryWebhook(
+        userId,
+        project.repoOwner,
+        project.repoName,
+        project.webhookId,
+      );
+    }
+
+    await this.projects.delete(projectId);
+  }
+
   private async buildUniqueSlug(ownerId: string, name: string) {
     const baseSlug = slugify(name);
     const existingSlugs = await this.projects.findSlugsByBase(
@@ -183,7 +223,8 @@ export class ProjectService {
   }
 
   private async buildUniqueContainerName(baseName: string) {
-    const existingNames = await this.projects.findContainerNamesByBase(baseName);
+    const existingNames =
+      await this.projects.findContainerNamesByBase(baseName);
     const exactMatch = new Set(existingNames);
 
     if (!exactMatch.has(baseName)) {
@@ -250,3 +291,4 @@ function withWebhookProvisionStatus<
     isWebhookProvisioned: project.webhookId !== null,
   };
 }
+

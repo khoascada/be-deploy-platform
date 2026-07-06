@@ -8,6 +8,10 @@ import {
 } from '@/features/deployments/shared/types/deployment-status-events';
 import { RedisService } from '@/redis/redis.service';
 import { Injectable } from '@nestjs/common';
+import {
+  DEPLOYMENT_CREATED_EVENT,
+  type DeploymentCreatedEvent,
+} from './types/deployment-created-events';
 
 @Injectable()
 export class DeploymentRealtimePublisherService {
@@ -16,6 +20,13 @@ export class DeploymentRealtimePublisherService {
   async publishLogCreated(event: DeploymentLogCreatedEvent) {
     await this.redis.client.publish(
       DEPLOYMENT_LOG_CREATED_EVENT,
+      JSON.stringify(event),
+    );
+  }
+
+  async publishCreated(event: DeploymentCreatedEvent) {
+    await this.redis.client.publish(
+      DEPLOYMENT_CREATED_EVENT,
       JSON.stringify(event),
     );
   }

@@ -1,4 +1,4 @@
-import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
+﻿import { DEPLOYMENT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { ACTIVE_DEPLOYMENT_STATUSES } from '@/features/deployments/shared/constants/deployment.constants';
 import type {
@@ -12,6 +12,27 @@ import type {
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { DeploymentStatus, DeploymentTrigger } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+
+export interface GithubPushDeploymentInput {
+  branch: string;
+  commitSha: string | null;
+  commitMessage: string | null;
+  commitAuthorName: string | null;
+  commitAuthorEmail: string | null;
+}
+
+export interface GithubWebhookRecordInput {
+  projectId: string;
+  githubDeliveryId: string;
+  eventName: string;
+  action: string | null;
+  signature: string | null;
+  isVerified: boolean;
+  payload: Prisma.InputJsonValue;
+  ignoreReason?: string;
+  push?: GithubPushDeploymentInput;
+}
 
 @Injectable()
 export class DeploymentRepository {
@@ -55,6 +76,167 @@ export class DeploymentRepository {
           queuedAt,
         },
       });
+    });
+  }
+
+  async recordGithubWebhook(input: GithubWebhookRecordInput) {
+    return this.prisma.$transaction(async (tx) => {
+      const duplicate = await tx.webhookEvent.findUnique({
+        where: { githubDeliveryId: input.githubDeliveryId },
+      });
+      if (duplicate) {
+        return { duplicate: true, deployment: null };
+      }
+
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtext(${input.projectId}))
+      `;
+
+      const duplicateAfterLock = await tx.webhookEvent.findUnique({
+        where: { githubDeliveryId: input.githubDeliveryId },
+      });
+      if (duplicateAfterLock) {
+        return { duplicate: true, deployment: null };
+      }
+
+      const now = new Date();
+      const event = await tx.webhookEvent.create({
+        data: {
+          projectId: input.projectId,
+          githubDeliveryId: input.githubDeliveryId,
+          eventName: input.eventName,
+          action: input.action,
+          signature: input.signature,
+          isVerified: input.isVerified,
+          payload: input.payload,
+          ...(input.ignoreReason
+            ? { processedAt: now, errorMessage: input.ignoreReason }
+            : {}),
+        },
+      });
+
+      if (!input.push || input.ignoreReason || !input.isVerified) {
+        return { duplicate: false, deployment: null };
+      }
+
+      const activeDeployment = await tx.deployment.findFirst({
+        where: {
+          projectId: input.projectId,
+          status: { in: [...ACTIVE_DEPLOYMENT_STATUSES] },
+        },
+      });
+      if (activeDeployment) {
+        return { duplicate: false, deployment: null };
+      }
+
+      await tx.webhookEvent.updateMany({
+        where: {
+          projectId: input.projectId,
+          id: { not: event.id },
+          eventName: 'push',
+          isVerified: true,
+          processedAt: null,
+          errorMessage: null,
+        },
+        data: {
+          processedAt: now,
+          errorMessage: 'Superseded by a newer push',
+        },
+      });
+
+      const deployment = await createGithubDeployment(
+        tx,
+        input.projectId,
+        input.githubDeliveryId,
+        input.push,
+      );
+      await tx.webhookEvent.update({
+        where: { id: event.id },
+        data: { processedAt: now },
+      });
+      return { duplicate: false, deployment };
+    });
+  }
+
+  async promoteLatestPendingGithubPush(projectId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtext(${projectId}))
+      `;
+      const activeDeployment = await tx.deployment.findFirst({
+        where: {
+          projectId,
+          status: { in: [...ACTIVE_DEPLOYMENT_STATUSES] },
+        },
+      });
+      if (activeDeployment) return null;
+
+      const pending = await tx.webhookEvent.findMany({
+        where: {
+          projectId,
+          eventName: 'push',
+          isVerified: true,
+          processedAt: null,
+          errorMessage: null,
+        },
+        orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+      });
+      const latest = pending[0];
+      if (!latest) return null;
+
+      const push = parseStoredPush(latest.payload);
+      const now = new Date();
+      if (!push) {
+        await tx.webhookEvent.update({
+          where: { id: latest.id },
+          data: { processedAt: now, errorMessage: 'Invalid stored push payload' },
+        });
+        return null;
+      }
+
+      if (pending.length > 1) {
+        await tx.webhookEvent.updateMany({
+          where: { id: { in: pending.slice(1).map((event) => event.id) } },
+          data: {
+            processedAt: now,
+            errorMessage: 'Superseded by a newer push',
+          },
+        });
+      }
+
+      const deployment = await createGithubDeployment(
+        tx,
+        projectId,
+        latest.githubDeliveryId,
+        push,
+      );
+      await tx.webhookEvent.update({
+        where: { id: latest.id },
+        data: { processedAt: now },
+      });
+      return deployment;
+    });
+  }
+
+  findLatestByProjectId(projectId: string) {
+    return this.prisma.deployment.findFirst({
+      where: { projectId },
+      orderBy: [{ createdAt: 'desc' }, { deploymentNumber: 'desc' }],
+    });
+  }
+
+  findActiveByProjectId(projectId: string) {
+    return this.prisma.deployment.findFirst({
+      where: {
+        projectId,
+        status: {
+          in: [...ACTIVE_DEPLOYMENT_STATUSES],
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+      },
     });
   }
 
@@ -256,6 +438,56 @@ export class DeploymentRepository {
   }
 }
 
+async function createGithubDeployment(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  githubDeliveryId: string,
+  push: GithubPushDeploymentInput,
+) {
+  const latestDeployment = await tx.deployment.findFirst({
+    where: { projectId },
+    orderBy: { deploymentNumber: 'desc' },
+  });
+  return tx.deployment.create({
+    data: {
+      projectId,
+      deploymentNumber: (latestDeployment?.deploymentNumber ?? 0) + 1,
+      trigger: DeploymentTrigger.GITHUB_PUSH,
+      status: DeploymentStatus.QUEUED,
+      branch: push.branch,
+      commitSha: push.commitSha,
+      commitMessage: push.commitMessage,
+      commitAuthorName: push.commitAuthorName,
+      commitAuthorEmail: push.commitAuthorEmail,
+      githubDeliveryId,
+      queuedAt: new Date(),
+    },
+  });
+}
+
+function parseStoredPush(payload: Prisma.JsonValue): GithubPushDeploymentInput | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const value = payload as Record<string, Prisma.JsonValue>;
+  const ref = value.ref;
+  if (typeof ref !== 'string' || !ref.startsWith('refs/heads/')) return null;
+  const head = value.head_commit;
+  const commit =
+    head && typeof head === 'object' && !Array.isArray(head)
+      ? (head as Record<string, Prisma.JsonValue>)
+      : null;
+  const author =
+    commit?.author && typeof commit.author === 'object' && !Array.isArray(commit.author)
+      ? (commit.author as Record<string, Prisma.JsonValue>)
+      : null;
+  return {
+    branch: ref.slice('refs/heads/'.length),
+    commitSha: typeof commit?.id === 'string' ? commit.id : null,
+    commitMessage: typeof commit?.message === 'string' ? commit.message : null,
+    commitAuthorName: typeof author?.name === 'string' ? author.name : null,
+    commitAuthorEmail: typeof author?.email === 'string' ? author.email : null,
+  };
+}
+
 function calculateDurationMs(
   startedAt: Date | null | undefined,
   finishedAt: Date,
@@ -266,3 +498,8 @@ function calculateDurationMs(
 
   return Math.max(0, finishedAt.getTime() - startedAt.getTime());
 }
+
+
+
+
+

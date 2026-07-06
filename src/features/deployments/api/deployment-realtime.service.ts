@@ -18,11 +18,17 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import type { Response } from 'express';
 import type Redis from 'ioredis';
+import {
+  DEPLOYMENT_CREATED_EVENT,
+  type DeploymentCreatedEvent,
+  isDeploymentCreatedEvent,
+} from '@/features/deployments/shared/types/deployment-created-events';
 
 type DeploymentRealtimeEvent =
   | DeploymentLogCreatedEvent
   | DeploymentStatusChangedEvent;
 type DeploymentRealtimeListener = (event: DeploymentRealtimeEvent) => void;
+type ProjectRealtimeListener = (event: DeploymentCreatedEvent) => void;
 
 @Injectable()
 export class DeploymentRealtimeService
@@ -30,6 +36,7 @@ export class DeploymentRealtimeService
 {
   private readonly logger = new Logger(DeploymentRealtimeService.name);
   private readonly listeners = new Map<string, Set<DeploymentRealtimeListener>>();
+  private readonly projectListeners = new Map<string, Set<ProjectRealtimeListener>>();
   private subscriber: Redis | null = null;
 
   constructor(
@@ -55,13 +62,18 @@ export class DeploymentRealtimeService
         return;
       }
 
-      this.emit(event);
+      if (event.type === DEPLOYMENT_CREATED_EVENT) {
+        this.emitProject(event);
+      } else {
+        this.emit(event);
+      }
     });
 
     await this.subscriber.connect();
     await this.subscriber.subscribe(
       DEPLOYMENT_LOG_CREATED_EVENT,
       DEPLOYMENT_STATUS_CHANGED_EVENT,
+      DEPLOYMENT_CREATED_EVENT,
     );
   }
 
@@ -72,6 +84,18 @@ export class DeploymentRealtimeService
     }
 
     this.listeners.clear();
+    this.projectListeners.clear();
+  }
+
+  subscribeProject(projectId: string, listener: ProjectRealtimeListener) {
+    const listeners = this.projectListeners.get(projectId) ?? new Set();
+    listeners.add(listener);
+    this.projectListeners.set(projectId, listeners);
+    return () => {
+      const current = this.projectListeners.get(projectId);
+      current?.delete(listener);
+      if (current?.size === 0) this.projectListeners.delete(projectId);
+    };
   }
 
   subscribe(
@@ -95,7 +119,10 @@ export class DeploymentRealtimeService
     };
   }
 
-  writeSseEvent(response: Response, event: DeploymentRealtimeEvent) {
+  writeSseEvent(
+    response: Response,
+    event: DeploymentRealtimeEvent | DeploymentCreatedEvent,
+  ) {
     response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
   }
 
@@ -109,14 +136,27 @@ export class DeploymentRealtimeService
       listener(event);
     }
   }
+
+  private emitProject(event: DeploymentCreatedEvent) {
+    for (const listener of this.projectListeners.get(event.projectId) ?? []) {
+      listener(event);
+    }
+  }
 }
 
 function parseDeploymentRealtimeEvent(
   channel: string,
   payload: string,
-): DeploymentRealtimeEvent | null {
+): DeploymentRealtimeEvent | DeploymentCreatedEvent | null {
   try {
     const parsed: unknown = JSON.parse(payload);
+
+    if (
+      channel === DEPLOYMENT_CREATED_EVENT &&
+      isDeploymentCreatedEvent(parsed)
+    ) {
+      return parsed;
+    }
 
     if (
       channel === DEPLOYMENT_LOG_CREATED_EVENT &&

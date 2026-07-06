@@ -14,7 +14,7 @@ import {
   type DeploymentResponseDto,
   toDeploymentResponseDto,
 } from '@/features/deployments/api/dto/deployment-response.dto';
-import { DeploymentQueueService } from '@/features/deployments/shared/deployment-queue.service';
+import { DeploymentDispatchService } from '@/features/deployments/shared/deployment-dispatch.service';
 import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import { toDeploymentStatusChangedEvent } from '@/features/deployments/shared/types/deployment-status-events';
@@ -37,7 +37,7 @@ export class DeploymentService {
   constructor(
     private readonly projects: ProjectRepository,
     private readonly deployments: DeploymentRepository,
-    private readonly deploymentQueue: DeploymentQueueService,
+    private readonly dispatch: DeploymentDispatchService,
     private readonly realtimePublisher: DeploymentRealtimePublisherService,
   ) {}
 
@@ -94,17 +94,12 @@ export class DeploymentService {
     await this.publishStatusChanged(deployment);
 
     try {
-      await this.deploymentQueue.enqueue(deployment.id);
+      await this.dispatch.dispatch(deployment);
     } catch (error) {
       const message = getErrorMessage(error);
       this.logger.error(
         `Failed to enqueue deployment ${deployment.id}: ${message}`,
       );
-      const failedDeployment = await this.deployments.markEnqueueFailed(
-        deployment.id,
-        message,
-      );
-      await this.publishStatusChanged(failedDeployment);
       throw error;
     }
 

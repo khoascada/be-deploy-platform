@@ -58,3 +58,13 @@ export class BadRequestError extends CodedException {
     super(HttpStatus.BAD_REQUEST, message, code);
   }
 }
+
+export class BadGatewayError extends CodedException {
+  constructor(
+    message = 'Bad gateway',
+    code: ErrorCode = COMMON_ERROR_CODE.INTERNAL_ERROR,
+  ) {
+    super(HttpStatus.BAD_GATEWAY, message, code);
+  }
+}
+

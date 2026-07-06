@@ -1,18 +1,29 @@
 ﻿import { GITHUB_ERROR_CODE } from '@/common/constants';
 import {
   BadRequestError,
+  BadGatewayError,
   ConflictError,
   NotFoundError,
+  UnauthorizedError,
 } from '@/common/exceptions/app.exceptions';
+import { DeploymentDispatchService } from '@/features/deployments/shared/deployment-dispatch.service';
+import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import type { EnvVars } from '@/config/env.validation';
 import { RedisService } from '@/redis/redis.service';
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash, randomBytes } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { toGithubBranchListItemDto } from './dto/github-branch-list-response.dto';
 import { toGithubRepoListItemDto } from './dto/github-repo-list-response.dto';
 import {
   decryptGithubToken,
+  decryptGithubWebhookSecret,
   encryptGithubToken,
   encryptGithubWebhookSecret,
 } from './github-token-cipher';
@@ -80,7 +91,92 @@ export class GithubService {
     private readonly config: ConfigService<EnvVars, true>,
     private readonly redis: RedisService,
     private readonly githubConnections: GithubRepository,
+    private readonly deployments: DeploymentRepository,
+    private readonly dispatch: DeploymentDispatchService,
   ) {}
+
+  async handleRepositoryWebhook(input: {
+    event: string;
+    deliveryId: string;
+    hookId: string;
+    signature: string;
+    rawBody: Buffer;
+    payload: unknown;
+  }) {
+    if (!input.event || !input.deliveryId || !input.hookId) {
+      throw new BadRequestError('Missing required GitHub webhook headers');
+    }
+
+    const project = await this.githubConnections.findProjectByWebhookId(
+      input.hookId,
+    );
+    if (!project) {
+      this.logger.warn(`Ignoring webhook for unknown hook ${input.hookId}`);
+      return;
+    }
+
+    const encryptionKey = this.config.get('GITHUB_TOKEN_ENCRYPTION_KEY', {
+      infer: true,
+    });
+    if (!encryptionKey || !project.webhookSecretEncrypted) {
+      throw new Error('GitHub webhook verification is not configured');
+    }
+
+    const secret = decryptGithubWebhookSecret(
+      project.webhookSecretEncrypted,
+      encryptionKey,
+    );
+    const isVerified = verifyWebhookSignature(
+      input.rawBody,
+      input.signature,
+      secret,
+    );
+    const payload = toJsonPayload(input.payload);
+    const action = readStringProperty(input.payload, 'action');
+    const repositoryId = readNestedScalar(input.payload, 'repository', 'id');
+    const repositoryMatches =
+      repositoryId !== null &&
+      String(repositoryId) === String(project.githubRepoId);
+
+    if (!isVerified) {
+      await this.deployments.recordGithubWebhook({
+        projectId: project.id,
+        githubDeliveryId: input.deliveryId,
+        eventName: input.event,
+        action,
+        signature: input.signature || null,
+        isVerified: false,
+        payload,
+        ignoreReason: 'Invalid signature',
+      });
+      throw new UnauthorizedError('Invalid GitHub webhook signature');
+    }
+
+    let ignoreReason: string | undefined;
+    const push = input.event === 'push' ? parseGithubPush(input.payload) : null;
+    if (!repositoryMatches) ignoreReason = 'Repository does not match project';
+    else if (input.event !== 'push') ignoreReason = `Unsupported event: ${input.event}`;
+    else if (!push) ignoreReason = 'Invalid or deleted push payload';
+    else if (push.branch !== project.deployBranch)
+      ignoreReason = `Branch ${push.branch} does not match deploy branch ${project.deployBranch}`;
+    else if (project.status !== 'ACTIVE') ignoreReason = 'Project is not active';
+    else if (!project.autoDeploy) ignoreReason = 'Auto deploy is disabled';
+
+    const result = await this.deployments.recordGithubWebhook({
+      projectId: project.id,
+      githubDeliveryId: input.deliveryId,
+      eventName: input.event,
+      action,
+      signature: input.signature || null,
+      isVerified: true,
+      payload,
+      ...(ignoreReason ? { ignoreReason } : {}),
+      ...(!ignoreReason && push ? { push } : {}),
+    });
+    if (result.deployment) {
+      await this.dispatch.dispatch(result.deployment);
+    }
+  }
 
   async getOAuthLoginRedirect(userId: string) {
     const clientId = this.config.get('GITHUB_CLIENT_ID', { infer: true });
@@ -655,6 +751,56 @@ export class GithubService {
     };
   }
 
+  async deleteRepositoryWebhook(
+    userId: string,
+    owner: string,
+    repo: string,
+    webhookId: string,
+  ) {
+    const parsedWebhookId = Number(webhookId);
+    if (!Number.isInteger(parsedWebhookId) || parsedWebhookId <= 0) {
+      throw new BadGatewayError(
+        'Cannot delete repository webhook',
+        GITHUB_ERROR_CODE.CANNOT_DELETE_REPOSITORY_WEBHOOK,
+      );
+    }
+
+    const accessToken = await this.getGithubAccessToken(userId);
+
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/hooks/${parsedWebhookId}`,
+        {
+          method: 'DELETE',
+          headers: this.getGithubHeaders(accessToken),
+          signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+        },
+      );
+
+      if (response.status === 204) {
+        return { deleted: true as const };
+      }
+
+      if (response.status === 404) {
+        return { deleted: false as const };
+      }
+
+      throw new BadGatewayError(
+        'Cannot delete repository webhook',
+        GITHUB_ERROR_CODE.CANNOT_DELETE_REPOSITORY_WEBHOOK,
+      );
+    } catch (error) {
+      if (error instanceof BadGatewayError) {
+        throw error;
+      }
+
+      throw new BadGatewayError(
+        'Cannot delete repository webhook',
+        GITHUB_ERROR_CODE.CANNOT_DELETE_REPOSITORY_WEBHOOK,
+      );
+    }
+  }
+
   private getProjectsUrl() {
     const frontendUrl = this.config.get('FRONTEND_URL', { infer: true });
     return new URL('/projects', frontendUrl).toString();
@@ -681,3 +827,64 @@ function isUniqueConstraintError(error: unknown): boolean {
     error.code === 'P2002'
   );
 }
+
+function verifyWebhookSignature(
+  rawBody: Buffer,
+  signature: string,
+  secret: string,
+) {
+  if (!signature.startsWith('sha256=')) return false;
+  const expected = Buffer.from(
+    `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`,
+  );
+  const received = Buffer.from(signature);
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
+function toJsonPayload(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
+}
+
+function readStringProperty(value: unknown, key: string) {
+  if (!value || typeof value !== 'object') return null;
+  const property = (value as Record<string, unknown>)[key];
+  return typeof property === 'string' ? property : null;
+}
+
+function readNestedScalar(value: unknown, objectKey: string, propertyKey: string) {
+  if (!value || typeof value !== 'object') return null;
+  const nested = (value as Record<string, unknown>)[objectKey];
+  if (!nested || typeof nested !== 'object') return null;
+  const property = (nested as Record<string, unknown>)[propertyKey];
+  return typeof property === 'string' || typeof property === 'number'
+    ? property
+    : null;
+}
+
+function parseGithubPush(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const payload = value as Record<string, unknown>;
+  if (payload.deleted === true) return null;
+  const ref = payload.ref;
+  if (typeof ref !== 'string' || !ref.startsWith('refs/heads/')) return null;
+  const head =
+    payload.head_commit && typeof payload.head_commit === 'object'
+      ? (payload.head_commit as Record<string, unknown>)
+      : null;
+  if (!head) return null;
+  const author =
+    head.author && typeof head.author === 'object'
+      ? (head.author as Record<string, unknown>)
+      : null;
+  return {
+    branch: ref.slice('refs/heads/'.length),
+    commitSha: typeof head.id === 'string' ? head.id : null,
+    commitMessage: typeof head.message === 'string' ? head.message : null,
+    commitAuthorName: typeof author?.name === 'string' ? author.name : null,
+    commitAuthorEmail: typeof author?.email === 'string' ? author.email : null,
+  };
+}
+
+
+
+

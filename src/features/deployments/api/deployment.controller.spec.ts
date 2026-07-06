@@ -26,6 +26,7 @@ describe('DeploymentController', () => {
     writeSseEvent: jest.fn(),
   };
 
+
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [DeploymentController],

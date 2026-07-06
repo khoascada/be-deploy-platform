@@ -116,12 +116,6 @@ export class ProjectRepository {
       return await this.prisma.project.create({ data });
     } catch (error) {
       const uniqueTargets = getUniqueTargets(error);
-      console.log(
-        '🚀 ~ ProjectRepository ~ create ~ uniqueTargets:',
-        error,
-        'halo',
-        uniqueTargets,
-      );
 
       if (includesAllTargets(uniqueTargets, ['hostPort'])) {
         throw new ConflictError(
@@ -153,6 +147,14 @@ export class ProjectRepository {
 
       throw error;
     }
+  }
+
+  async delete(projectId: string) {
+    return this.prisma.project.delete({
+      where: {
+        id: projectId,
+      },
+    });
   }
 }
 

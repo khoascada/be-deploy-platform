@@ -1,4 +1,5 @@
-﻿import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
+import { DeploymentRealtimePublisherService } from '@/features/deployments/shared/deployment-realtime-publisher.service';
+import { DeploymentDispatchService } from '@/features/deployments/shared/deployment-dispatch.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import type { DeploymentFailureInput } from '@/features/deployments/shared/deployment.types';
 import { toDeploymentStatusChangedEvent } from '@/features/deployments/shared/types/deployment-status-events';
@@ -20,6 +21,7 @@ export class DeploymentExecutorService {
     private readonly runtime: DeploymentRuntimeService,
     private readonly publisher: DeploymentRealtimePublisherService,
     private readonly envVars: EnvVarService,
+    private readonly dispatch: DeploymentDispatchService,
   ) {}
 
   async execute(deploymentId: string) {
@@ -141,6 +143,15 @@ export class DeploymentExecutorService {
       );
       await this.publishStatusChanged(failedDeployment);
       throw error;
+    } finally {
+      try {
+        await this.dispatch.promoteAndDispatchLatestPush(context.projectId);
+      } catch (error) {
+        this.logger.error(
+          getErrorMessage(error),
+          `Failed to dispatch pending GitHub push for project ${context.projectId}`,
+        );
+      }
     }
   }
 
@@ -183,4 +194,3 @@ function toFailureInput(error: unknown): DeploymentFailureInput {
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown deployment error';
 }
-
