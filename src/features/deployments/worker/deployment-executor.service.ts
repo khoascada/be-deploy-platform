@@ -144,6 +144,7 @@ export class DeploymentExecutorService {
       await this.publishStatusChanged(failedDeployment);
       throw error;
     } finally {
+      // 
       try {
         await this.dispatch.promoteAndDispatchLatestPush(context.projectId);
       } catch (error) {

@@ -11,8 +11,12 @@ import type {
 } from '@/features/deployments/shared/deployment.types';
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
-import { DeploymentStatus, DeploymentTrigger } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
+import {
+  DeploymentStatus,
+  DeploymentTrigger,
+  WebhookEventStatus,
+} from '@prisma/client';
 
 export interface GithubPushDeploymentInput {
   branch: string;
@@ -80,18 +84,25 @@ export class DeploymentRepository {
   }
 
   async recordGithubWebhook(input: GithubWebhookRecordInput) {
+    // ghi webhookEvent và tạo Deployment transaction
     return this.prisma.$transaction(async (tx) => {
+      // 1. Kiểm tra nhanh delivery này đã được ghi nhận chưa.
+      // GitHub có thể retry cùng một webhook với cùng githubDeliveryId.
       const duplicate = await tx.webhookEvent.findUnique({
         where: { githubDeliveryId: input.githubDeliveryId },
       });
+      // Đã tồn tại thì không tạo thêm event hoặc deployment.
       if (duplicate) {
         return { duplicate: true, deployment: null };
       }
 
+      // ngăn ko cho transaction khác cùng projectId chạy.
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext(${input.projectId}))
       `;
 
+      // 3. Kiểm tra duplicate lần nữa sau khi lấy lock.
+      // Trong lúc request hiện tại chờ lock, một request khác có thể đã ghi event.
       const duplicateAfterLock = await tx.webhookEvent.findUnique({
         where: { githubDeliveryId: input.githubDeliveryId },
       });
@@ -100,6 +111,8 @@ export class DeploymentRepository {
       }
 
       const now = new Date();
+      const status = resolveInitialWebhookStatus(input);
+      // 4. Ghi lại webhook delivery để audit, debug và chống xử lý trùng.
       const event = await tx.webhookEvent.create({
         data: {
           projectId: input.projectId,
@@ -109,50 +122,83 @@ export class DeploymentRepository {
           signature: input.signature,
           isVerified: input.isVerified,
           payload: input.payload,
-          ...(input.ignoreReason
-            ? { processedAt: now, errorMessage: input.ignoreReason }
+          status,
+          ...(isTerminalWebhookStatus(status)
+            ? {
+                processedAt: now,
+                statusReason:
+                  input.ignoreReason ?? 'Invalid or missing push payload',
+              }
             : {}),
         },
       });
 
+      //  Dừng tại đây nếu event không thể tạo deployment:
+      //
+      // - Không có push: event không phải push hoặc payload push không parse được.
+      // - Có ignoreReason: sai repo/branch, auto deploy tắt, project inactive...
+      // - Chưa verify: signature không hợp lệ.
+      //
+      // WebhookEvent vẫn được lưu, nhưng không tạo Deployment.
       if (!input.push || input.ignoreReason || !input.isVerified) {
         return { duplicate: false, deployment: null };
       }
 
+      // 6. Kiểm tra project hiện có deployment đang chạy hay không.
       const activeDeployment = await tx.deployment.findFirst({
         where: {
           projectId: input.projectId,
           status: { in: [...ACTIVE_DEPLOYMENT_STATUSES] },
         },
       });
+
+      // Nếu đang có deployment chạy, giữ event mới ở trạng thái PENDING.
+      //
+      // Sau khi deployment hiện tại hoàn tất,
+      // promoteLatestPendingGithubPush() có thể xử lý push pending mới nhất.
       if (activeDeployment) {
+        await tx.webhookEvent.update({
+          where: { id: event.id },
+          data: { status: WebhookEventStatus.PENDING },
+        });
         return { duplicate: false, deployment: null };
       }
 
+      // 7. Trước khi deploy push mới, đánh dấu các push pending cũ của project
+      // là đã bị push mới thay thế, để sau này chúng không được deploy nữa.
       await tx.webhookEvent.updateMany({
         where: {
           projectId: input.projectId,
+          // Không cập nhật chính event vừa tạo.
           id: { not: event.id },
+          // Chỉ supersede các push hợp lệ đang pending.
           eventName: 'push',
           isVerified: true,
-          processedAt: null,
-          errorMessage: null,
+          status: WebhookEventStatus.PENDING,
         },
         data: {
+          status: WebhookEventStatus.SUPERSEDED,
           processedAt: now,
-          errorMessage: 'Superseded by a newer push',
+          statusReason: 'Superseded by a newer push',
         },
       });
 
+      // 8. Tạo Deployment từ thông tin branch và commit của GitHub push.
+      // githubDeliveryId liên kết deployment với webhook đã kích hoạt nó.
       const deployment = await createGithubDeployment(
         tx,
         input.projectId,
         input.githubDeliveryId,
         input.push,
       );
+      // 9. Đánh dấu webhook hiện tại đã được xử lý thành công.
       await tx.webhookEvent.update({
         where: { id: event.id },
-        data: { processedAt: now },
+        data: {
+          status: WebhookEventStatus.PROCESSED,
+          statusReason: null,
+          processedAt: now,
+        },
       });
       return { duplicate: false, deployment };
     });
@@ -163,6 +209,7 @@ export class DeploymentRepository {
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext(${projectId}))
       `;
+      // nếu có active deployment hiện tại thì return
       const activeDeployment = await tx.deployment.findFirst({
         where: {
           projectId,
@@ -171,48 +218,60 @@ export class DeploymentRepository {
       });
       if (activeDeployment) return null;
 
+      // tìm những webhookEvent đang pending push của projectId
       const pending = await tx.webhookEvent.findMany({
         where: {
           projectId,
           eventName: 'push',
           isVerified: true,
-          processedAt: null,
-          errorMessage: null,
+          status: WebhookEventStatus.PENDING,
         },
         orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
       });
       const latest = pending[0];
       if (!latest) return null;
 
+      // parse payload để lấy info
       const push = parseStoredPush(latest.payload);
       const now = new Date();
       if (!push) {
         await tx.webhookEvent.update({
           where: { id: latest.id },
-          data: { processedAt: now, errorMessage: 'Invalid stored push payload' },
+          data: {
+            status: WebhookEventStatus.FAILED,
+            processedAt: now,
+            statusReason: 'Invalid stored push payload',
+          },
         });
         return null;
       }
-
+      // vd có B,C,D -> chỉ push D rồi loại các push cũ ko push nữa.
       if (pending.length > 1) {
         await tx.webhookEvent.updateMany({
           where: { id: { in: pending.slice(1).map((event) => event.id) } },
           data: {
+            status: WebhookEventStatus.SUPERSEDED,
             processedAt: now,
-            errorMessage: 'Superseded by a newer push',
+            statusReason: 'Superseded by a newer push',
           },
         });
       }
 
+      // tạo deployment
       const deployment = await createGithubDeployment(
         tx,
         projectId,
         latest.githubDeliveryId,
         push,
       );
+      // update webhook đã đc xử lý
       await tx.webhookEvent.update({
         where: { id: latest.id },
-        data: { processedAt: now },
+        data: {
+          status: WebhookEventStatus.PROCESSED,
+          statusReason: null,
+          processedAt: now,
+        },
       });
       return deployment;
     });
@@ -438,6 +497,23 @@ export class DeploymentRepository {
   }
 }
 
+function resolveInitialWebhookStatus(
+  input: GithubWebhookRecordInput,
+): WebhookEventStatus {
+  if (!input.isVerified || (!input.push && !input.ignoreReason)) {
+    return WebhookEventStatus.FAILED;
+  }
+  if (input.ignoreReason) return WebhookEventStatus.IGNORED;
+  return WebhookEventStatus.RECEIVED;
+}
+
+function isTerminalWebhookStatus(status: WebhookEventStatus): boolean {
+  return (
+    status === WebhookEventStatus.FAILED ||
+    status === WebhookEventStatus.IGNORED
+  );
+}
+
 async function createGithubDeployment(
   tx: Prisma.TransactionClient,
   projectId: string,
@@ -465,8 +541,11 @@ async function createGithubDeployment(
   });
 }
 
-function parseStoredPush(payload: Prisma.JsonValue): GithubPushDeploymentInput | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+function parseStoredPush(
+  payload: Prisma.JsonValue,
+): GithubPushDeploymentInput | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+    return null;
   const value = payload as Record<string, Prisma.JsonValue>;
   const ref = value.ref;
   if (typeof ref !== 'string' || !ref.startsWith('refs/heads/')) return null;
@@ -476,7 +555,9 @@ function parseStoredPush(payload: Prisma.JsonValue): GithubPushDeploymentInput |
       ? (head as Record<string, Prisma.JsonValue>)
       : null;
   const author =
-    commit?.author && typeof commit.author === 'object' && !Array.isArray(commit.author)
+    commit?.author &&
+    typeof commit.author === 'object' &&
+    !Array.isArray(commit.author)
       ? (commit.author as Record<string, Prisma.JsonValue>)
       : null;
   return {
@@ -498,8 +579,3 @@ function calculateDurationMs(
 
   return Math.max(0, finishedAt.getTime() - startedAt.getTime());
 }
-
-
-
-
-

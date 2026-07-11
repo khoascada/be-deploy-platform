@@ -76,6 +76,15 @@ enum EnvScope {
   BOTH // dùng cả 2
 }
 
+enum WebhookEventStatus {
+  RECEIVED
+  PENDING // push hợp lệ nhưng project đang có deploy active
+  PROCESSED
+  IGNORED // event hợp lệ but ko cần deploy
+  FAILED 
+  SUPERSEDED // bỏ qua vì pending push đã cũ.
+} 
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -415,25 +424,18 @@ model WebhookEvent {
   /// - head_commit.message
   payload Json
 
+  status WebhookEventStatus @default(RECEIVED)
+  statusReason String?
   /// Thời điểm BE nhận webhook
   receivedAt DateTime @default(now())
 
   /// Thời điểm BE xử lý xong webhook
-  ///
   /// Có thể null nếu:
   /// - webhook mới nhận nhưng chưa xử lý xong
   /// - verify failed
   /// - bị duplicate nên bỏ qua
   processedAt DateTime?
 
-  /// Lỗi xảy ra khi xử lý webhook
-  ///
-  /// Ví dụ:
-  /// "Invalid signature"
-  /// "Project not found"
-  /// "Branch dev does not match deployBranch main"
-  /// "Duplicate delivery id"
-  errorMessage String?
 
   /// Tối ưu query webhook theo project
   @@index([projectId])
