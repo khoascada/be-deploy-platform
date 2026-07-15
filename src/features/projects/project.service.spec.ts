@@ -1,11 +1,12 @@
 import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
-import { ConflictError, NotFoundError } from '@/common/exceptions/app.exceptions';
+import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { ProjectService } from './project.service';
 
 describe('ProjectService.deleteProject', () => {
   const projects = {
     findById: jest.fn(),
     delete: jest.fn(),
+    updateSettings: jest.fn(),
   };
 
   const github = {
@@ -153,5 +154,77 @@ describe('ProjectService.deleteProject', () => {
     );
 
     expect(projects.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectService.updateProject', () => {
+  const projects = {
+    findById: jest.fn(),
+    updateSettings: jest.fn(),
+  };
+  const deployments = { findActiveByProjectId: jest.fn() };
+  let service: ProjectService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new ProjectService(
+      projects as never,
+      {} as never,
+      deployments as never,
+    );
+  });
+
+  it('updates settings and returns refreshed detail for the owner', async () => {
+    const project = {
+      id: 'project-1',
+      ownerId: 'user-1',
+      deployments: [],
+      webhookEvents: [],
+    };
+    projects.findById
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce(project);
+    deployments.findActiveByProjectId.mockResolvedValue(null);
+
+    await service.updateProject('user-1', 'project-1', {
+      autoDeploy: false,
+    });
+
+    expect(projects.updateSettings).toHaveBeenCalledWith('project-1', {
+      autoDeploy: false,
+    });
+    expect(projects.findById).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns not found when the project is missing or belongs to another user', async () => {
+    projects.findById.mockResolvedValue({
+      id: 'project-1',
+      ownerId: 'user-2',
+    });
+
+    await expect(
+      service.updateProject('user-1', 'project-1', { autoDeploy: false }),
+    ).rejects.toMatchObject({
+      response: { code: PROJECT_ERROR_CODE.PROJECT_NOT_FOUND },
+    });
+    expect(projects.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('rejects updates while a deployment is active', async () => {
+    projects.findById.mockResolvedValue({
+      id: 'project-1',
+      ownerId: 'user-1',
+    });
+    deployments.findActiveByProjectId.mockResolvedValue({
+      id: 'deployment-1',
+      status: 'BUILDING',
+    });
+
+    await expect(
+      service.updateProject('user-1', 'project-1', { autoDeploy: false }),
+    ).rejects.toMatchObject({
+      response: { code: PROJECT_ERROR_CODE.PROJECT_HAS_ACTIVE_DEPLOYMENT },
+    });
+    expect(projects.updateSettings).not.toHaveBeenCalled();
   });
 });

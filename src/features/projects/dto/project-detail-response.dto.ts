@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { Project } from '@prisma/client';
+import type { Prisma, Project, WebhookEventStatus } from '@prisma/client';
 import {
   type DeployStatusDto,
   LatestDeployDto,
@@ -8,6 +8,53 @@ import {
 
 const PROJECT_RUNNER_TYPE_VALUES = ['LOCAL', 'SSH'] as const;
 const PROJECT_STATUS_VALUES = ['ACTIVE', 'PAUSED', 'ARCHIVED'] as const;
+const WEBHOOK_EVENT_STATUS_VALUES = [
+  'RECEIVED',
+  'PENDING',
+  'PROCESSED',
+  'IGNORED',
+  'FAILED',
+  'SUPERSEDED',
+] as const;
+
+export class LatestWebhookEventDto {
+  @ApiProperty({ example: 'cm123webhookevent' })
+  id!: string;
+
+  @ApiProperty({ example: 'push' })
+  eventName!: string;
+
+  @ApiProperty({ example: 'PROCESSED', enum: WEBHOOK_EVENT_STATUS_VALUES })
+  status!: WebhookEventStatus;
+
+  @ApiProperty({
+    example: 'Branch dev does not match deploy branch main',
+    nullable: true,
+  })
+  statusReason!: string | null;
+
+  @ApiProperty({ example: true })
+  isVerified!: boolean;
+
+  @ApiProperty({ example: '2026-07-11T10:00:00.000Z', type: String })
+  receivedAt!: string;
+
+  @ApiProperty({
+    example: '2026-07-11T10:00:01.000Z',
+    nullable: true,
+    type: String,
+  })
+  processedAt!: string | null;
+
+  @ApiProperty({ example: 'main', nullable: true })
+  branch!: string | null;
+
+  @ApiProperty({ example: 'abc123def456', nullable: true })
+  commitSha!: string | null;
+
+  @ApiProperty({ example: 'feat: add webhook activity', nullable: true })
+  commitMessage!: string | null;
+}
 
 export class ProjectDetailDto {
   @ApiProperty({ example: 'clx123abc456def789ghi012' })
@@ -89,6 +136,9 @@ export class ProjectDetailDto {
   @ApiProperty({ type: LatestDeployDto, nullable: true })
   latestDeploy!: LatestDeployDto | null;
 
+  @ApiProperty({ type: LatestWebhookEventDto, nullable: true })
+  latestWebhookEvent!: LatestWebhookEventDto | null;
+
   @ApiProperty({ example: 'ACTIVE', enum: PROJECT_STATUS_VALUES })
   status!: Project['status'];
 
@@ -109,12 +159,23 @@ type ProjectDetailWithDeployments = Project & {
     finishedAt: Date | null;
     trigger: 'MANUAL' | 'GITHUB_PUSH';
   }>;
+  webhookEvents?: Array<{
+    id: string;
+    eventName: string;
+    status: WebhookEventStatus;
+    statusReason: string | null;
+    isVerified: boolean;
+    payload: Prisma.JsonValue;
+    receivedAt: Date;
+    processedAt: Date | null;
+  }>;
 };
 
 export function toProjectDetailDto(
   project: ProjectDetailWithDeployments,
 ): ProjectDetailDto {
   const latestDeploy = project.deployments[0];
+  const latestWebhookEvent = project.webhookEvents?.[0];
 
   return {
     id: project.id,
@@ -143,8 +204,59 @@ export function toProjectDetailDto(
     autoDeploy: project.autoDeploy,
     webhookId: project.webhookId,
     latestDeploy: latestDeploy ? toLatestDeployDto(latestDeploy) : null,
+    latestWebhookEvent: latestWebhookEvent
+      ? toLatestWebhookEventDto(latestWebhookEvent)
+      : null,
     status: project.status,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+  };
+}
+
+function toLatestWebhookEventDto(event: {
+  id: string;
+  eventName: string;
+  status: WebhookEventStatus;
+  statusReason: string | null;
+  isVerified: boolean;
+  payload: Prisma.JsonValue;
+  receivedAt: Date;
+  processedAt: Date | null;
+}): LatestWebhookEventDto {
+  const push = event.eventName === 'push' ? parsePushMetadata(event.payload) : null;
+
+  return {
+    id: event.id,
+    eventName: event.eventName,
+    status: event.status,
+    statusReason: event.statusReason,
+    isVerified: event.isVerified,
+    receivedAt: event.receivedAt.toISOString(),
+    processedAt: event.processedAt?.toISOString() ?? null,
+    branch: push?.branch ?? null,
+    commitSha: push?.commitSha ?? null,
+    commitMessage: push?.commitMessage ?? null,
+  };
+}
+
+function parsePushMetadata(payload: Prisma.JsonValue) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+
+  const value = payload as Record<string, Prisma.JsonValue>;
+  const ref = value.ref;
+  if (typeof ref !== 'string' || !ref.startsWith('refs/heads/')) return null;
+
+  const headCommit =
+    value.head_commit &&
+    typeof value.head_commit === 'object' &&
+    !Array.isArray(value.head_commit)
+      ? (value.head_commit as Record<string, Prisma.JsonValue>)
+      : null;
+
+  return {
+    branch: ref.slice('refs/heads/'.length),
+    commitSha: typeof headCommit?.id === 'string' ? headCommit.id : null,
+    commitMessage:
+      typeof headCommit?.message === 'string' ? headCommit.message : null,
   };
 }

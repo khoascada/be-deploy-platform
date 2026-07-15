@@ -3,6 +3,7 @@ import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import type { UpdateProjectInput } from './schemas/project.schema';
 
 const HOST_PORT_CONFLICT_MESSAGE = 'Host port already exists';
 const GITHUB_REPO_CONFLICT_MESSAGE =
@@ -19,6 +20,10 @@ export class ProjectRepository {
       where: { id },
       include: {
         deployments: true,
+        webhookEvents: {
+          take: 1,
+          orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+        },
       },
     });
   }
@@ -109,6 +114,25 @@ export class ProjectRepository {
       where: { id: projectId },
       data: { webhookId, webhookSecretEncrypted },
     });
+  }
+
+  async updateSettings(projectId: string, data: UpdateProjectInput) {
+    try {
+      return await this.prisma.project.update({
+        where: { id: projectId },
+        data,
+      });
+    } catch (error) {
+      const uniqueTargets = getUniqueTargets(error);
+      if (includesAllTargets(uniqueTargets, ['hostPort'])) {
+        throw new ConflictError(
+          HOST_PORT_CONFLICT_MESSAGE,
+          PROJECT_ERROR_CODE.HOST_PORT_ALREADY_EXISTS,
+        );
+      }
+
+      throw error;
+    }
   }
 
   async create(data: Prisma.ProjectUncheckedCreateInput) {

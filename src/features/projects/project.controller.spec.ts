@@ -16,6 +16,7 @@ describe('ProjectController', () => {
     getDetail: jest.fn(),
     findAllByUserId: jest.fn(),
     createProject: jest.fn(),
+    updateProject: jest.fn(),
   };
 
   const deployments = {
@@ -57,5 +58,20 @@ describe('ProjectController', () => {
     await request(app.getHttpServer()).delete('/projects/project-1').expect(204);
 
     expect(projects.deleteProject).toHaveBeenCalledWith('user-1', 'project-1');
+  });
+
+  it('updates project settings for the current user', async () => {
+    projects.updateProject.mockResolvedValue({ id: 'project-1' });
+
+    await request(app.getHttpServer())
+      .patch('/projects/project-1')
+      .send({ autoDeploy: false })
+      .expect(200);
+
+    expect(projects.updateProject).toHaveBeenCalledWith(
+      'user-1',
+      'project-1',
+      { autoDeploy: false },
+    );
   });
 });

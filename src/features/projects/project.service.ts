@@ -10,7 +10,10 @@ import { GithubService } from '../github/github.service';
 import { toProjectDetailDto } from './dto/project-detail-response.dto';
 import { toProjectListResponseDto } from './dto/project-list-response.dto';
 import { ProjectRepository } from './project.repository';
-import type { CreateProjectInput } from './schemas/project.schema';
+import type {
+  CreateProjectInput,
+  UpdateProjectInput,
+} from './schemas/project.schema';
 import { escapeRegExp, slugify } from './utils/project.utils';
 
 const PROJECT_SLUG_CONFLICT_MESSAGE = 'Project slug already exists';
@@ -186,6 +189,33 @@ export class ProjectService {
     }
 
     await this.projects.delete(projectId);
+  }
+
+  async updateProject(
+    userId: string,
+    projectId: string,
+    input: UpdateProjectInput,
+  ) {
+    const project = await this.projects.findById(projectId);
+
+    if (!project || project.ownerId !== userId) {
+      throw new NotFoundError(
+        'Project not found',
+        PROJECT_ERROR_CODE.PROJECT_NOT_FOUND,
+      );
+    }
+
+    const activeDeployment =
+      await this.deployments.findActiveByProjectId(projectId);
+    if (activeDeployment) {
+      throw new ConflictError(
+        'Cannot update project while a deployment is still active',
+        PROJECT_ERROR_CODE.PROJECT_HAS_ACTIVE_DEPLOYMENT,
+      );
+    }
+
+    await this.projects.updateSettings(projectId, input);
+    return this.getDetail(userId, projectId);
   }
 
   private async buildUniqueSlug(ownerId: string, name: string) {

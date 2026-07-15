@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -28,6 +29,7 @@ import type { Response } from 'express';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ProjectDetailDto } from './dto/project-detail-response.dto';
 import { ProjectListResponseDto } from './dto/project-list-response.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectService } from './project.service';
 
 @ApiTags('projects')
@@ -95,6 +97,21 @@ export class ProjectController {
   @Post()
   create(@CurrentUser('id') userId: string, @Body() body: CreateProjectDto) {
     return this.projects.createProject(userId, body);
+  }
+
+  @ApiOperation({ summary: 'Update project settings' })
+  @ApiParam({ name: 'id', example: 'clx123abc456def789ghi012' })
+  @ApiOkResponse({ type: ProjectDetailDto })
+  @ApiConflictResponse({
+    description: 'Project has an active deployment or host port is in use',
+  })
+  @Patch(':id')
+  update(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Body() body: UpdateProjectDto,
+  ) {
+    return this.projects.updateProject(userId, projectId, body);
   }
 
   @ApiOperation({ summary: 'Delete project' })

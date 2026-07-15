@@ -427,6 +427,7 @@ export class DeploymentRepository {
     });
   }
 
+  // update commit info khi create manual
   saveResolvedCommit(
     deploymentId: string,
     data: DeploymentResolvedCommitInput,

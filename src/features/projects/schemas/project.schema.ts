@@ -62,3 +62,27 @@ export const createProjectSchema = z
   .strict();
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+const updatePath = (defaultValue: string) =>
+  z
+    .string()
+    .trim()
+    .transform((value) => value || defaultValue)
+    .optional();
+
+export const updateProjectSchema = z
+  .object({
+    deployBranch: z.string().trim().min(1).optional(),
+    rootDirectory: updatePath('.'),
+    dockerfilePath: updatePath('Dockerfile'),
+    buildContext: updatePath('.'),
+    containerPort: optionalPortNumber.optional(),
+    hostPort: nullablePortNumber.optional(),
+    autoDeploy: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one project setting is required',
+  });
+
+export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
