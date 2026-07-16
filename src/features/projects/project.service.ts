@@ -4,6 +4,7 @@ import {
   ConflictError,
   NotFoundError,
 } from '@/common/exceptions/app.exceptions';
+import { ProjectRuntimeCleanupService } from '@/features/deployments/shared/deployment-runtime-cleanup.service';
 import { DeploymentRepository } from '@/features/deployments/shared/deployment.repository';
 import { Injectable } from '@nestjs/common';
 import { GithubService } from '../github/github.service';
@@ -27,6 +28,7 @@ export class ProjectService {
     private readonly projects: ProjectRepository,
     private readonly github: GithubService,
     private readonly deployments: DeploymentRepository,
+    private readonly runtimeCleanup: ProjectRuntimeCleanupService,
   ) {}
 
   async findAllByUserId(userId: string, pagination: PaginationDto) {
@@ -188,6 +190,7 @@ export class ProjectService {
       );
     }
 
+    await this.runtimeCleanup.cleanupProjectResources(project);
     await this.projects.delete(projectId);
   }
 
@@ -321,4 +324,3 @@ function withWebhookProvisionStatus<
     isWebhookProvisioned: project.webhookId !== null,
   };
 }
-

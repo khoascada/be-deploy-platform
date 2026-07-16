@@ -1,4 +1,4 @@
-import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
+﻿import { COMMON_ERROR_CODE, PROJECT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { ProjectService } from './project.service';
 
@@ -17,6 +17,10 @@ describe('ProjectService.deleteProject', () => {
     findActiveByProjectId: jest.fn(),
   };
 
+  const runtimeCleanup = {
+    cleanupProjectResources: jest.fn(),
+  };
+
   let service: ProjectService;
 
   beforeEach(() => {
@@ -25,6 +29,7 @@ describe('ProjectService.deleteProject', () => {
       projects as never,
       github as never,
       deployments as never,
+      runtimeCleanup as never,
     );
   });
 
@@ -39,6 +44,7 @@ describe('ProjectService.deleteProject', () => {
     });
 
     expect(deployments.findActiveByProjectId).not.toHaveBeenCalled();
+    expect(runtimeCleanup.cleanupProjectResources).not.toHaveBeenCalled();
     expect(projects.delete).not.toHaveBeenCalled();
   });
 
@@ -56,6 +62,7 @@ describe('ProjectService.deleteProject', () => {
     });
 
     expect(deployments.findActiveByProjectId).not.toHaveBeenCalled();
+    expect(runtimeCleanup.cleanupProjectResources).not.toHaveBeenCalled();
     expect(projects.delete).not.toHaveBeenCalled();
   });
 
@@ -79,35 +86,32 @@ describe('ProjectService.deleteProject', () => {
     });
 
     expect(github.deleteRepositoryWebhook).not.toHaveBeenCalled();
+    expect(runtimeCleanup.cleanupProjectResources).not.toHaveBeenCalled();
     expect(projects.delete).not.toHaveBeenCalled();
   });
 
-  it('deletes the project immediately when no webhook is configured', async () => {
-    projects.findById.mockResolvedValue({
-      id: 'project-1',
-      ownerId: 'user-1',
-      repoOwner: 'octocat',
-      repoName: 'hello-world',
-      webhookId: null,
-    });
+  it('deletes the project after runtime cleanup when no webhook is configured', async () => {
+    const project = buildProject({ webhookId: null });
+    projects.findById.mockResolvedValue(project);
     deployments.findActiveByProjectId.mockResolvedValue(null);
+    runtimeCleanup.cleanupProjectResources.mockResolvedValue(undefined);
 
     await expect(service.deleteProject('user-1', 'project-1')).resolves.toBeUndefined();
 
     expect(github.deleteRepositoryWebhook).not.toHaveBeenCalled();
+    expect(runtimeCleanup.cleanupProjectResources).toHaveBeenCalledWith(project);
+    expect(runtimeCleanup.cleanupProjectResources.mock.invocationCallOrder[0]).toBeLessThan(
+      projects.delete.mock.invocationCallOrder[0],
+    );
     expect(projects.delete).toHaveBeenCalledWith('project-1');
   });
 
-  it('deletes the project after GitHub confirms webhook deletion', async () => {
-    projects.findById.mockResolvedValue({
-      id: 'project-1',
-      ownerId: 'user-1',
-      repoOwner: 'octocat',
-      repoName: 'hello-world',
-      webhookId: '123',
-    });
+  it('deletes the project after GitHub confirms webhook deletion and runtime cleanup succeeds', async () => {
+    const project = buildProject({ webhookId: '123' });
+    projects.findById.mockResolvedValue(project);
     deployments.findActiveByProjectId.mockResolvedValue(null);
     github.deleteRepositoryWebhook.mockResolvedValue({ deleted: true });
+    runtimeCleanup.cleanupProjectResources.mockResolvedValue(undefined);
 
     await expect(service.deleteProject('user-1', 'project-1')).resolves.toBeUndefined();
 
@@ -117,36 +121,49 @@ describe('ProjectService.deleteProject', () => {
       'hello-world',
       '123',
     );
+    expect(runtimeCleanup.cleanupProjectResources).toHaveBeenCalledWith(project);
+    expect(github.deleteRepositoryWebhook.mock.invocationCallOrder[0]).toBeLessThan(
+      runtimeCleanup.cleanupProjectResources.mock.invocationCallOrder[0],
+    );
+    expect(runtimeCleanup.cleanupProjectResources.mock.invocationCallOrder[0]).toBeLessThan(
+      projects.delete.mock.invocationCallOrder[0],
+    );
     expect(projects.delete).toHaveBeenCalledWith('project-1');
   });
 
   it('continues deleting the project when the GitHub webhook is already gone', async () => {
-    projects.findById.mockResolvedValue({
-      id: 'project-1',
-      ownerId: 'user-1',
-      repoOwner: 'octocat',
-      repoName: 'hello-world',
-      webhookId: '123',
-    });
+    const project = buildProject({ webhookId: '123' });
+    projects.findById.mockResolvedValue(project);
     deployments.findActiveByProjectId.mockResolvedValue(null);
     github.deleteRepositoryWebhook.mockResolvedValue({ deleted: false });
+    runtimeCleanup.cleanupProjectResources.mockResolvedValue(undefined);
 
     await expect(service.deleteProject('user-1', 'project-1')).resolves.toBeUndefined();
 
+    expect(runtimeCleanup.cleanupProjectResources).toHaveBeenCalledWith(project);
     expect(projects.delete).toHaveBeenCalledWith('project-1');
   });
 
   it('stops before deleting the database record when GitHub webhook deletion fails', async () => {
-    projects.findById.mockResolvedValue({
-      id: 'project-1',
-      ownerId: 'user-1',
-      repoOwner: 'octocat',
-      repoName: 'hello-world',
-      webhookId: '123',
-    });
+    projects.findById.mockResolvedValue(buildProject({ webhookId: '123' }));
     deployments.findActiveByProjectId.mockResolvedValue(null);
     github.deleteRepositoryWebhook.mockRejectedValue(
       new ConflictError('upstream failed'),
+    );
+
+    await expect(service.deleteProject('user-1', 'project-1')).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+
+    expect(runtimeCleanup.cleanupProjectResources).not.toHaveBeenCalled();
+    expect(projects.delete).not.toHaveBeenCalled();
+  });
+
+  it('stops before deleting the database record when runtime cleanup fails', async () => {
+    projects.findById.mockResolvedValue(buildProject({ webhookId: null }));
+    deployments.findActiveByProjectId.mockResolvedValue(null);
+    runtimeCleanup.cleanupProjectResources.mockRejectedValue(
+      new ConflictError('cleanup failed'),
     );
 
     await expect(service.deleteProject('user-1', 'project-1')).rejects.toBeInstanceOf(
@@ -171,6 +188,7 @@ describe('ProjectService.updateProject', () => {
       projects as never,
       {} as never,
       deployments as never,
+      {} as never,
     );
   });
 
@@ -228,3 +246,17 @@ describe('ProjectService.updateProject', () => {
     expect(projects.updateSettings).not.toHaveBeenCalled();
   });
 });
+
+function buildProject(overrides: Record<string, unknown>) {
+  return {
+    id: 'project-1',
+    ownerId: 'user-1',
+    repoOwner: 'octocat',
+    repoName: 'hello-world',
+    slug: 'hello-world',
+    runnerType: 'LOCAL',
+    containerName: 'hello-world',
+    imageName: 'mini-deploy/hello-world',
+    ...overrides,
+  };
+}

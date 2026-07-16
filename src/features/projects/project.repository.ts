@@ -19,7 +19,14 @@ export class ProjectRepository {
     return this.prisma.project.findUnique({
       where: { id },
       include: {
-        deployments: true,
+        deployments: {
+          take: 1,
+          orderBy: [
+            { deploymentNumber: 'desc' },
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
+        },
         webhookEvents: {
           take: 1,
           orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
