@@ -69,8 +69,8 @@ jobs:
             # Chạy Prisma migration trên production database
             docker compose run --rm backend npx prisma migrate deploy
 
-            # Restart container backend bằng image mới
-            docker compose up -d --no-deps backend
+            # Restart container backend, worker bằng image mới
+            docker compose up -d --no-deps backend worker
 
             # In trạng thái container sau khi deploy
             docker compose ps
