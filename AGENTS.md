@@ -13,7 +13,7 @@ File này là bộ quy tắc vận hành mặc định cho mọi AI agent làm v
 
 Nếu task không nhỏ và chưa xác định được skill cụ thể, mặc định dùng chuỗi:
 
-`spec-driven-development` -> `planning-and-task-breakdown` -> `incremental-implementation` -> `test-driven-development`
+`spec-driven-development` -> `planning-and-task-breakdown` -> `incremental-implementation`
 
 ## Các Skill Cục Bộ Hiện Có
 
@@ -22,7 +22,7 @@ Nếu task không nhỏ và chưa xác định được skill cụ thể, mặc 
 - `spec-driven-development`: viết spec trước khi làm các thay đổi không nhỏ
 - `planning-and-task-breakdown`: chia scope đã chốt thành các task có thứ tự và có thể kiểm chứng
 - `incremental-implementation`: triển khai theo từng lát nhỏ, luôn ở trạng thái chạy được
-- `test-driven-development`: viết test fail trước cho thay đổi hành vi và bug fix
+- `test-driven-development`: workflow tùy chọn, chỉ dùng khi người dùng yêu cầu hoặc khi test setup đã rõ và thật sự cần thiết
 - `source-driven-development`: xác minh pattern framework/library bằng tài liệu chính thức trước khi dùng
 - `api-and-interface-design`: thiết kế contract ổn định và semantics lỗi nhất quán
 - `security-and-hardening`: áp dụng tư duy threat model và các boundary bảo mật
@@ -60,7 +60,7 @@ Không được:
 
 ### 5. Cái gì cũng phải verify
 
-Một task không hoàn thành chỉ vì "trông có vẻ đúng". Phải dùng test, build, lint và manual verification có mục tiêu khi phù hợp.
+Một task không hoàn thành chỉ vì "trông có vẻ đúng". Phải dùng build, lint hoặc manual verification có mục tiêu khi phù hợp. Chỉ viết/chạy test khi người dùng yêu cầu, khi task thật sự cần test, hoặc khi test setup đã rõ ràng và có thể chạy được.
 
 Ngoài ra, không được chạy lại đúng cùng một lệnh verify hai lần liên tiếp nếu code không đổi ở giữa.
 
@@ -86,7 +86,7 @@ Spec nên định nghĩa:
 - commands
 - project structure
 - code style expectations
-- testing strategy
+- verification strategy
 - boundaries: always / ask first / never
 
 ### Có spec rồi -> plan
@@ -105,21 +105,11 @@ Chia công việc thành các task nhỏ, có thứ tự, mỗi task có:
 Với công việc nhiều file hoặc có rủi ro:
 
 - implement một lát nhỏ
-<!-- - test nó -->
 - verify nó
 - rồi mới sang lát tiếp theo
 
 Không được đổ một cục thay đổi lớn chưa verify vào cùng lúc.
 
-<!-- ### Đổi behavior hoặc sửa bug -> test trước
-
-Với logic mới, đổi hành vi, hoặc bug fix:
-
-- viết test fail trước
-- xác nhận test đó thật sự fail
-- implement mức tối thiểu để pass
-- chạy test liên quan
-- rồi chạy verify rộng hơn trước khi kết thúc -->
 
 ## Quy Tắc Source-Driven
 
@@ -221,7 +211,6 @@ Trước khi tuyên bố task đã xong, xác nhận:
 - đã dùng đúng workflow của skill phù hợp
 - assumptions đã được nêu ra
 - phạm vi đã được giữ chặt
-<!-- - test hoặc bước verify phù hợp đã thực sự được chạy khi cần -->
 - build/lint đã pass khi có liên quan
 - mọi vùng rủi ro hoặc chưa verify đã được nêu rõ
 

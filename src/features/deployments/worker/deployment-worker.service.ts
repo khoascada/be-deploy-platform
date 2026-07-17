@@ -1,10 +1,11 @@
-import type { EnvVars } from '@/config/env.validation';
+﻿import type { EnvVars } from '@/config/env.validation';
 import { DEPLOYMENT_QUEUE_NAME } from '@/features/deployments/shared/constants/deployment.constants';
 import { createBullMqConnection } from '@/features/deployments/shared/deployment-queue.service';
 import type { DeploymentJobData } from '@/features/deployments/shared/deployment.types';
 import { DeploymentExecutorService } from '@/features/deployments/worker/deployment-executor.service';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Job } from 'bullmq';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
@@ -29,7 +30,7 @@ export class DeploymentWorkerService implements OnModuleDestroy {
     );
     this.worker = new Worker<DeploymentJobData>(
       DEPLOYMENT_QUEUE_NAME,
-      async (job: any) => {
+      async (job: Job<DeploymentJobData>) => {
         await this.executor.execute(job.data.deploymentId);
       },
       {
@@ -41,10 +42,10 @@ export class DeploymentWorkerService implements OnModuleDestroy {
       },
     );
 
-    this.worker.on('completed', (job: any) => {
+    this.worker.on('completed', (job: Job<DeploymentJobData>) => {
       this.logger.log(`Completed deployment job ${job.id}`);
     });
-    this.worker.on('failed', (job: any, error: any) => {
+    this.worker.on('failed', (job: Job<DeploymentJobData> | undefined, error: Error) => {
       this.logger.error(
         `Deployment job ${job?.id ?? 'unknown'} failed: ${error.message}`,
       );
@@ -68,3 +69,4 @@ export class DeploymentWorkerService implements OnModuleDestroy {
     await this.stop();
   }
 }
+
