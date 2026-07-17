@@ -18,7 +18,6 @@ jobs:
       # Chỉ cần quyền đọc source code
       contents: read
     env:
-      NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deploy_platform?schema=public
       REDIS_URL: redis://localhost:6379
@@ -77,3 +76,5 @@ jobs:
 
       - name: Build project
         run: npm run build
+        env:
+          NODE_ENV: production
