@@ -12,6 +12,7 @@ describe('GithubController', () => {
   const github = {
     getOAuthLoginRedirect: jest.fn(),
     oAuthCallback: jest.fn(),
+    handleRepositoryWebhook: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -76,9 +77,24 @@ describe('GithubController', () => {
   });
 
   it('accepts repository webhooks', async () => {
+    github.handleRepositoryWebhook.mockResolvedValue(undefined);
     await request(app.getHttpServer())
       .post('/github/webhooks/repository')
-      .send({})
+      .set('x-github-event', 'push')
+      .set('x-github-delivery', 'delivery-1')
+      .set('x-github-hook-id', 'hook-1')
+      .set('x-hub-signature-256', 'sha256=test')
+      .send({ repository: { id: 1 } })
       .expect(204);
+
+    expect(github.handleRepositoryWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'push',
+        deliveryId: 'delivery-1',
+        hookId: 'hook-1',
+        signature: 'sha256=test',
+        payload: { repository: { id: 1 } },
+      }),
+    );
   });
 });

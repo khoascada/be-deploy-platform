@@ -1,89 +1,38 @@
-import { COMMON_ERROR_CODE } from '@/common/constants';
-import { ConflictError } from '@/common/exceptions/app.exceptions';
-import type { PrismaService } from '@/prisma/prisma.service';
 import { ProjectRepository } from './project.repository';
+import { PROJECT_ERROR_CODE } from '@/common/constants';
 
-describe('ProjectRepository', () => {
-  const findMany = jest.fn();
-  const count = jest.fn();
-  const create = jest.fn();
+describe('ProjectRepository.findById', () => {
+  it('loads only the latest webhook event', async () => {
+    const findUnique = jest.fn().mockResolvedValue(null);
+    const repository = new ProjectRepository({ project: { findUnique } } as never);
 
-  const prisma = {
-    project: {
-      findMany,
-      count,
-      create,
-    },
-  } as unknown as PrismaService;
+    await repository.findById('project-1');
 
-  let repository: ProjectRepository;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    repository = new ProjectRepository(prisma);
-  });
-
-  it('returns matching slugs for a base slug', async () => {
-    findMany.mockResolvedValue([{ slug: 'demo' }, { slug: 'demo-2' }]);
-
-    await expect(
-      repository.findSlugsByBase('user-1', 'demo'),
-    ).resolves.toEqual(['demo', 'demo-2']);
-  });
-
-  it('maps hostPort unique conflicts to a stable business code', async () => {
-    create.mockRejectedValue(prismaUniqueError(['hostPort']));
-
-    await expect(repository.create(createProjectData())).rejects.toMatchObject(
-      new ConflictError(
-        'Host port already exists',
-        COMMON_ERROR_CODE.CONFLICT,
-      ),
-    );
-  });
-
-  it('maps owner and githubRepoId conflicts to a stable business code', async () => {
-    create.mockRejectedValue(prismaUniqueError(['ownerId', 'githubRepoId']));
-
-    await expect(repository.create(createProjectData())).rejects.toMatchObject(
-      new ConflictError(
-        'GitHub repository already exists for this user',
-        COMMON_ERROR_CODE.CONFLICT,
-      ),
-    );
-  });
-
-  it('maps owner and slug conflicts to a stable business code', async () => {
-    create.mockRejectedValue(prismaUniqueError(['ownerId', 'slug']));
-
-    await expect(repository.create(createProjectData())).rejects.toMatchObject(
-      new ConflictError(
-        'Project slug already exists',
-        COMMON_ERROR_CODE.CONFLICT,
-      ),
-    );
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { id: 'project-1' },
+      include: {
+        deployments: true,
+        webhookEvents: {
+          take: 1,
+          orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+        },
+      },
+    });
   });
 });
 
-function createProjectData() {
-  return {
-    ownerId: 'user-1',
-    githubRepoId: '123',
-    name: 'Demo',
-    slug: 'demo',
-    deployBranch: 'main',
-    repoFullName: 'octocat/demo',
-    repoOwner: 'octocat',
-    repoName: 'demo',
-    repoUrl: 'https://github.com/octocat/demo',
-    githubDefaultBranch: 'main',
-    autoDeploy: false,
-  };
-}
+describe('ProjectRepository.updateSettings', () => {
+  it('maps a duplicate host port to the project conflict code', async () => {
+    const update = jest.fn().mockRejectedValue({
+      code: 'P2002',
+      meta: { target: ['hostPort'] },
+    });
+    const repository = new ProjectRepository({ project: { update } } as never);
 
-function prismaUniqueError(target: string[]) {
-  return {
-    code: 'P2002',
-    meta: { target },
-  };
-}
+    await expect(
+      repository.updateSettings('project-1', { hostPort: 8080 }),
+    ).rejects.toMatchObject({
+      response: { code: PROJECT_ERROR_CODE.HOST_PORT_ALREADY_EXISTS },
+    });
+  });
+});

@@ -1,13 +1,15 @@
-import { COMMON_ERROR_CODE } from '@/common/constants';
+import { PROJECT_ERROR_CODE } from '@/common/constants';
 import { ConflictError } from '@/common/exceptions/app.exceptions';
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import type { UpdateProjectInput } from './schemas/project.schema';
 
 const HOST_PORT_CONFLICT_MESSAGE = 'Host port already exists';
 const GITHUB_REPO_CONFLICT_MESSAGE =
   'GitHub repository already exists for this user';
 const PROJECT_SLUG_CONFLICT_MESSAGE = 'Project slug already exists';
+const CONTAINER_NAME_CONFLICT_MESSAGE = 'Container name already exists';
 
 @Injectable()
 export class ProjectRepository {
@@ -17,12 +19,23 @@ export class ProjectRepository {
     return this.prisma.project.findUnique({
       where: { id },
       include: {
-        deployments: true
-      }
+        deployments: {
+          take: 1,
+          orderBy: [
+            { deploymentNumber: 'desc' },
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
+        },
+        webhookEvents: {
+          take: 1,
+          orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+        },
+      },
     });
   }
 
-  findAll(args: { skip: number; take: number, userId: string }) {
+  findAll(args: { skip: number; take: number; userId: string }) {
     return this.prisma.project.findMany({
       skip: args.skip,
       take: args.take,
@@ -56,16 +69,16 @@ export class ProjectRepository {
         },
       },
       where: {
-        ownerId: args.userId
-      }
+        ownerId: args.userId,
+      },
     });
   }
 
   count(userId: string) {
     return this.prisma.project.count({
       where: {
-        ownerId: userId
-      }
+        ownerId: userId,
+      },
     });
   }
 
@@ -82,6 +95,23 @@ export class ProjectRepository {
     return items.map((item) => item.slug);
   }
 
+  async findContainerNamesByBase(baseName: string) {
+    const items = await this.prisma.project.findMany({
+      where: {
+        OR: [
+          { containerName: baseName },
+          { containerName: { startsWith: `${baseName}-` } },
+        ],
+      },
+      select: { containerName: true },
+      orderBy: { containerName: 'asc' },
+    });
+
+    return items
+      .map((item) => item.containerName)
+      .filter((item): item is string => typeof item === 'string');
+  }
+
   async updateWebhookConfig(
     projectId: string,
     webhookId: string,
@@ -93,6 +123,25 @@ export class ProjectRepository {
     });
   }
 
+  async updateSettings(projectId: string, data: UpdateProjectInput) {
+    try {
+      return await this.prisma.project.update({
+        where: { id: projectId },
+        data,
+      });
+    } catch (error) {
+      const uniqueTargets = getUniqueTargets(error);
+      if (includesAllTargets(uniqueTargets, ['hostPort'])) {
+        throw new ConflictError(
+          HOST_PORT_CONFLICT_MESSAGE,
+          PROJECT_ERROR_CODE.HOST_PORT_ALREADY_EXISTS,
+        );
+      }
+
+      throw error;
+    }
+  }
+
   async create(data: Prisma.ProjectUncheckedCreateInput) {
     try {
       return await this.prisma.project.create({ data });
@@ -102,26 +151,41 @@ export class ProjectRepository {
       if (includesAllTargets(uniqueTargets, ['hostPort'])) {
         throw new ConflictError(
           HOST_PORT_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.HOST_PORT_ALREADY_EXISTS,
         );
       }
 
       if (includesAllTargets(uniqueTargets, ['ownerId', 'githubRepoId'])) {
         throw new ConflictError(
           GITHUB_REPO_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.GITHUB_REPO_ALREADY_EXISTS,
         );
       }
 
       if (includesAllTargets(uniqueTargets, ['ownerId', 'slug'])) {
         throw new ConflictError(
           PROJECT_SLUG_CONFLICT_MESSAGE,
-          COMMON_ERROR_CODE.CONFLICT,
+          PROJECT_ERROR_CODE.PROJECT_SLUG_ALREADY_EXISTS,
+        );
+      }
+
+      if (includesAllTargets(uniqueTargets, ['containerName'])) {
+        throw new ConflictError(
+          CONTAINER_NAME_CONFLICT_MESSAGE,
+          PROJECT_ERROR_CODE.CONTAINER_NAME_ALREADY_EXISTS,
         );
       }
 
       throw error;
     }
+  }
+
+  async delete(projectId: string) {
+    return this.prisma.project.delete({
+      where: {
+        id: projectId,
+      },
+    });
   }
 }
 
@@ -130,14 +194,35 @@ function getUniqueTargets(error: unknown) {
     typeof error !== 'object' ||
     error === null ||
     !('code' in error) ||
-    error.code !== 'P2002' ||
-    !('meta' in error)
+    error.code !== 'P2002'
   ) {
     return [] as string[];
   }
 
-  const target = (error.meta as { target?: unknown }).target;
-  return Array.isArray(target) ? target.filter(isString) : [];
+  if ('meta' in error) {
+    const target = (error.meta as { target?: unknown }).target;
+    if (Array.isArray(target)) {
+      return target.filter(isString);
+    }
+  }
+
+  if ('message' in error && typeof error.message === 'string') {
+    const match = /Unique constraint failed on the fields?: \((.+)\)/.exec(
+      error.message,
+    );
+
+    if (!match) {
+      return [] as string[];
+    }
+
+    return match[1]
+      .split(',')
+      .map((item) => item.trim())
+      .map((item) => item.replace(/^[`"'(]+|[`"')]+$/g, ''))
+      .filter(isString);
+  }
+
+  return [] as string[];
 }
 
 function includesAllTargets(targets: string[], expected: string[]) {

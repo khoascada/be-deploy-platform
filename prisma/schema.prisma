@@ -76,6 +76,15 @@ enum EnvScope {
   BOTH // dùng cả 2
 }
 
+enum WebhookEventStatus {
+  RECEIVED
+  PENDING // push hợp lệ nhưng project đang có deploy active
+  PROCESSED
+  IGNORED // event hợp lệ but ko cần deploy
+  FAILED 
+  SUPERSEDED // bỏ qua vì pending push đã cũ.
+} 
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -173,11 +182,6 @@ model Project {
   // Phase 0.5 dùng LOCAL: chạy trực tiếp trên VPS hiện tại
   // Phase 1 dùng SSH: chạy command qua VPS khác
   runnerType RunnerType @default(LOCAL)
-
-  // Đường dẫn repo được clone trên VPS
-  // Phase 0.5 dùng field này
-  // Ví dụ: "/var/mini-deploy/apps/wordy"
-  localRepoPath String?
 
   // Phase 1 dùng sau
   sshHost String?
@@ -342,7 +346,7 @@ model EnvVar {
   updatedAt DateTime @updatedAt
 
   // Trong một project, không nên có 2 env cùng key và cùng scope
-  @@unique([projectId, key, scope])
+  @@unique([projectId, key])
 }
 
 model WebhookEvent {
@@ -420,25 +424,18 @@ model WebhookEvent {
   /// - head_commit.message
   payload Json
 
+  status WebhookEventStatus @default(RECEIVED)
+  statusReason String?
   /// Thời điểm BE nhận webhook
   receivedAt DateTime @default(now())
 
   /// Thời điểm BE xử lý xong webhook
-  ///
   /// Có thể null nếu:
   /// - webhook mới nhận nhưng chưa xử lý xong
   /// - verify failed
   /// - bị duplicate nên bỏ qua
   processedAt DateTime?
 
-  /// Lỗi xảy ra khi xử lý webhook
-  ///
-  /// Ví dụ:
-  /// "Invalid signature"
-  /// "Project not found"
-  /// "Branch dev does not match deployBranch main"
-  /// "Duplicate delivery id"
-  errorMessage String?
 
   /// Tối ưu query webhook theo project
   @@index([projectId])
@@ -450,3 +447,4 @@ model WebhookEvent {
   /// Tối ưu query webhook gần đây
   @@index([receivedAt])
 }
+

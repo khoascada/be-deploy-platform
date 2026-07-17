@@ -1,62 +1,35 @@
-import { createProjectSchema } from './project.schema';
+import { updateProjectSchema } from './project.schema';
 
-describe('createProjectSchema', () => {
-  it('normalizes optional fields and ports the same way as the frontend', () => {
+describe('updateProjectSchema', () => {
+  it('accepts a partial settings payload', () => {
+    expect(updateProjectSchema.parse({ autoDeploy: false })).toEqual({
+      autoDeploy: false,
+    });
+  });
+
+  it('normalizes empty paths and host port', () => {
     expect(
-      createProjectSchema.parse({
-        githubRepoId: '123',
-        name: 'My App',
-        deployBranch: 'main',
-
-        rootDirectory: '   ',
+      updateProjectSchema.parse({
+        rootDirectory: ' ',
         dockerfilePath: '',
-        buildContext: ' apps/web ',
-        containerPort: '3000',
-        hostPort: '',
-      }),
-    ).toEqual({
-      githubRepoId: '123',
-      name: 'My App',
-      deployBranch: 'main',
-
-      rootDirectory: undefined,
-      dockerfilePath: undefined,
-      buildContext: 'apps/web',
-      containerPort: 3000,
-      hostPort: null,
-      autoDeploy: false,
-    });
-  });
-
-  it('allows omitting optional fields so Prisma defaults can apply', () => {
-    expect(
-      createProjectSchema.parse({
-        githubRepoId: '123',
-        name: 'My App',
-        deployBranch: 'main',
-
+        buildContext: '  ',
         hostPort: null,
       }),
     ).toEqual({
-      githubRepoId: '123',
-      name: 'My App',
-      deployBranch: 'main',
-
+      rootDirectory: '.',
+      dockerfilePath: 'Dockerfile',
+      buildContext: '.',
       hostPort: null,
-      autoDeploy: false,
     });
   });
 
-  it('rejects invalid port values', () => {
-    expect(() =>
-      createProjectSchema.parse({
-        githubRepoId: '123',
-        name: 'My App',
-        deployBranch: 'main',
+  it('rejects an empty payload', () => {
+    expect(() => updateProjectSchema.parse({})).toThrow();
+  });
 
-        hostPort: null,
-        containerPort: 'abc',
-      }),
-    ).toThrow('Invalid port number');
+  it('rejects unknown fields and invalid ports', () => {
+    expect(() => updateProjectSchema.parse({ name: 'renamed' })).toThrow();
+    expect(() => updateProjectSchema.parse({ containerPort: 0 })).toThrow();
+    expect(() => updateProjectSchema.parse({ hostPort: 'invalid' })).toThrow();
   });
 });

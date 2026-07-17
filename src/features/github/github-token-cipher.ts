@@ -17,7 +17,7 @@ const encryptedEnvelopeSchema = z.object({
   ciphertext: z.string().min(1),
 });
 
-// Mã hóa access token b?ng AES-256-GCM d? không luu token d?ng plaintext trong database.
+// Encrypt access tokens with AES-256-GCM; never store plaintext tokens.
 export function encryptGithubToken(
   plaintext: string,
   encryptionKeyBase64: string,
@@ -25,7 +25,7 @@ export function encryptGithubToken(
   return encryptEnvelope(plaintext, encryptionKeyBase64, ACCESS_TOKEN_AAD);
 }
 
-// Mã hóa webhook secret tru?c khi luu vào database.
+// Encrypt webhook secrets before storing them.
 export function encryptGithubWebhookSecret(
   plaintext: string,
   encryptionKeyBase64: string,
@@ -33,7 +33,7 @@ export function encryptGithubWebhookSecret(
   return encryptEnvelope(plaintext, encryptionKeyBase64, WEBHOOK_SECRET_AAD);
 }
 
-// Gi?i mã encrypted envelope khi backend c?n dùng access token d? g?i GitHub API.
+// Decrypt an access-token envelope before calling GitHub.
 export function decryptGithubToken(
   encryptedEnvelope: string,
   encryptionKeyBase64: string,
@@ -50,6 +50,27 @@ export function decryptGithubToken(
   decipher.setAAD(ACCESS_TOKEN_AAD);
   decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
 
+  return Buffer.concat([
+    decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+export function decryptGithubWebhookSecret(
+  encryptedEnvelope: string,
+  encryptionKeyBase64: string,
+): string {
+  const key = decodeKey(encryptionKeyBase64);
+  const envelope = encryptedEnvelopeSchema.parse(
+    JSON.parse(encryptedEnvelope) as unknown,
+  );
+  const decipher = createDecipheriv(
+    ALGORITHM,
+    key,
+    Buffer.from(envelope.iv, 'base64'),
+  );
+  decipher.setAAD(WEBHOOK_SECRET_AAD);
+  decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
   return Buffer.concat([
     decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
     decipher.final(),
@@ -80,7 +101,7 @@ function encryptEnvelope(
   });
 }
 
-// Decode key t? base64 và b?t bu?c key có dúng 32 byte theo yêu c?u c?a AES-256.
+// AES-256 requires the configured base64 key to decode to exactly 32 bytes.
 function decodeKey(encryptionKeyBase64: string): Buffer {
   const key = Buffer.from(encryptionKeyBase64, 'base64');
   if (key.length !== 32) {

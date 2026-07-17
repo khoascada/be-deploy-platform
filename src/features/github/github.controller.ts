@@ -10,10 +10,12 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { GithubBranchListResponseDto } from './dto/github-branch-list-response.dto';
 import { GithubBranchParamsDto } from './dto/github-branch-params.dto';
 import { GithubCacheRefreshQueryDto } from './dto/github-cache-refresh-query.dto';
@@ -74,21 +76,22 @@ export class GithubController {
   @Public()
   @Post('webhooks/repository')
   @HttpCode(HttpStatus.NO_CONTENT)
-  handleRepositoryWebhook(
+  async handleRepositoryWebhook(
     @Headers('x-github-event') event: string,
     @Headers('x-github-delivery') deliveryId: string,
     @Headers('x-github-hook-id') hookId: string,
     @Headers('x-hub-signature-256') signature: string,
+    @Req() request: RawBodyRequest<Request>,
     @Body() payload: unknown,
   ) {
-    void signature;
-    void payload;
-    console.log('GitHub webhook received:', {
+    await this.github.handleRepositoryWebhook({
       event,
       deliveryId,
       hookId,
+      signature,
+      rawBody: request.rawBody ?? Buffer.from(JSON.stringify(payload)),
+      payload,
     });
-
     return;
   }
 }

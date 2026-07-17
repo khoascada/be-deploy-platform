@@ -18,6 +18,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git docker.io openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

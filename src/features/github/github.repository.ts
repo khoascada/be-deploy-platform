@@ -40,6 +40,10 @@ export class GithubRepository {
     })
   }
 
+  findProjectByWebhookId(webhookId: string) {
+    return this.prisma.project.findFirst({ where: { webhookId } });
+  }
+
   // Tạo connection mới sau khi service đã hoàn tất toàn bộ bước xác thực OAuth.
   create(data: CreateGithubConnectionData) {
     return this.prisma.githubConnection.create({ data });

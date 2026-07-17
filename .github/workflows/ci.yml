@@ -17,6 +17,24 @@ jobs:
     permissions:
       # Chỉ cần quyền đọc source code
       contents: read
+    env:
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deploy_platform?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-jwt-secret-123456
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:2805
+      FRONTEND_URL: http://localhost:2805
+      BACKEND_URL: http://localhost:3000
+      REPOSITORIES_ROOT: /tmp/deploy-platform/repositories
+      DEPLOYMENT_QUEUE_PREFIX: deploy-platform-ci
+      DEPLOYMENT_QUEUE_CONCURRENCY: 1
+      GITHUB_CLIENT_ID: ci-github-client-id
+      GITHUB_CLIENT_SECRET: ci-github-client-secret
+      GITHUB_OAUTH_REDIRECT_URI: http://localhost:3000/api/v1/github/oauth/callback
+      GITHUB_OAUTH_SCOPE: "read:user repo"
+      GITHUB_TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      ENV_VAR_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
     defaults:
       run:
@@ -60,10 +78,3 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deploy_platform?schema=public
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test-jwt-secret-123456
-          JWT_EXPIRES_IN: 7d
-          CORS_ORIGIN: http://localhost:2805
-          FRONTEND_URL: http://localhost:2805
-          BACKEND_URL: http://localhost:3000
