@@ -1,4 +1,4 @@
-﻿import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import type { Language, Theme } from '@prisma/client';
 
@@ -41,7 +41,14 @@ export class UsersRepository {
 
   update(
     id: string,
-    data: { name?: string; email?: string; avatarUrl?: string },
+    data: {
+      name?: string;
+      email?: string;
+      avatarUrl?: string;
+      language?: Language;
+      theme?: Theme;
+      passwordHash?: string;
+    },
   ) {
     return this.prisma.user.update({ where: { id }, data });
   }

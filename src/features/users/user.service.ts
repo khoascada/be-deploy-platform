@@ -1,10 +1,12 @@
-﻿import { USER_ERROR_CODE } from '@/common/constants';
+import { BCRYPT, COMMON_ERROR_CODE, USER_ERROR_CODE } from '@/common/constants';
 import type { PaginationDto } from '@/common/dto/pagination.dto';
-import { NotFoundError } from '@/common/exceptions/app.exceptions';
+import { BadRequestError, NotFoundError } from '@/common/exceptions/app.exceptions';
 import { Injectable } from '@nestjs/common';
 import type { UpdateUserDto } from './dto/update-user.dto';
 import { toUserDetailDto, toUserDto } from './dto/user-response.dto';
 import { UsersRepository } from './user.repository';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UserService {
@@ -61,6 +63,19 @@ export class UserService {
     await this.findById(id);
     const updated = await this.users.update(id, dto);
     return toUserDetailDto(updated);
+  }
+
+  async changePassword(id: string, dto: ChangePasswordDto) {
+    const user = await this.users.findById(id);
+    if (!user || !user.passwordHash) {
+      throw new NotFoundError('User not found', USER_ERROR_CODE.USER_NOT_FOUND);
+    }
+    const isMatch = await bcrypt.compare(dto.oldPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new BadRequestError('Mật khẩu cũ không chính xác', COMMON_ERROR_CODE.BAD_REQUEST);
+    }
+    const hashed = await bcrypt.hash(dto.newPassword, BCRYPT.SALT_ROUNDS);
+    await this.users.update(id, { passwordHash: hashed });
   }
 
   async remove(id: string) {
